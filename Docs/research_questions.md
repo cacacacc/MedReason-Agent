@@ -1,114 +1,116 @@
-# Research Questions
+# 研究问题
 
-This document turns the project idea into experiment-testable research questions.
+本文档把 MedReason-Agent 的项目想法改写成可以通过实验回答的研究问题。后续所有代码、实验和报告都要服务于这些问题，而不是只做一个看起来复杂的 Demo。
 
-## Main Question
+## 总问题
 
-Can a supervisor-guided multi-agent reasoning framework improve multimodal medical VQA reliability compared with direct VLM inference?
+在固定同一个视觉语言模型 backbone 的前提下，Supervisor-guided Multi-Agent 推理框架是否能比 Direct VLM inference 更可靠地完成医学多模态视觉问答？
 
-## RQ1: Explicit Reasoning
+这里的“更可靠”不只指准确率更高，还包括更少幻觉、更好的证据支持、更合理的置信度、更低的 token / latency 成本。
 
-Question:
+## RQ1：显式推理是否有帮助
 
-Can explicit reasoning improve medical multimodal question answering compared with direct VLM inference?
+问题：
 
-Operational test:
+显式推理，例如 Chain-of-Thought，是否能提升医学多模态问答表现？
 
-- Compare Direct VLM vs Chain-of-Thought vs structured reasoning prompt.
-- Use the same backbone, dataset split, preprocessing, and decoding settings.
+实验做法：
 
-Primary metrics:
+- 比较 Direct VLM、Structured Direct Prompt、Chain-of-Thought。
+- 固定同一个模型、同一个数据划分、同一套图像预处理、同一套解码参数。
 
-- Accuracy / exact match
-- Open-ended answer match after normalization
+主要指标：
 
-Secondary metrics:
+- Accuracy / Exact Match
+- 开放式答案归一化后的匹配结果
 
-- Reasoning consistency
-- Output token cost
-- Latency
+辅助指标：
 
-## RQ2: Multi-Agent Collaboration
+- 推理一致性
+- 输出 token 数
+- latency
 
-Question:
+## RQ2：多 Agent 协作是否有帮助
 
-Can multi-agent collaboration improve multimodal medical reasoning compared with a single VLM or simple CoT?
+问题：
 
-Operational test:
+Multi-Agent collaboration 是否比单个 VLM 或简单 CoT 更适合医学多模态推理？
 
-- Compare Direct VLM, CoT, and Fixed Multi-Agent.
+实验做法：
 
-Key risk:
+- 比较 Direct VLM、CoT、Fixed Multi-Agent。
 
-- More agents can introduce more errors, longer context, and inconsistent intermediate claims.
+关键风险：
 
-## RQ3: Supervisor Routing
+- Agent 越多不一定越好。更多 Agent 可能引入更多中间错误、更长上下文、更高成本，以及互相不一致的中间结论。
 
-Question:
+## RQ3：Supervisor 路由是否优于固定流程
 
-Can a Supervisor Agent dynamically route reasoning tasks more effectively than a fixed multi-agent pipeline?
+问题：
 
-Operational test:
+Supervisor Agent 能否根据问题难度和任务类型动态选择推理路径，并优于固定 Multi-Agent pipeline？
 
-- Compare Fixed Multi-Agent vs Supervisor Multi-Agent.
-- Keep available agents and prompts controlled as much as possible.
+实验做法：
 
-Metrics:
+- 比较 Fixed Multi-Agent 和 Supervisor Multi-Agent。
+- 尽量保持可用 Agent、模型 backbone、提示词版本和评估脚本一致。
 
-- Accuracy
-- Average agent calls
-- Average steps
-- Latency
-- Token usage
-
-## RQ4: Verification
-
-Question:
-
-Can a Verification / Critic Agent reduce hallucination and correct faulty reasoning?
-
-Operational test:
-
-- Compare Supervisor without Critic vs Supervisor with Critic.
-- Track both correction and regression.
-
-Metrics:
-
-- Error correction rate
-- Correct-to-wrong revision rate
-- Unsupported claim rate
-- Hallucination rate
-
-## RQ5: Adaptive Reasoning
-
-Question:
-
-Can adaptive reasoning improve the accuracy-efficiency trade-off by avoiding expensive multi-agent reasoning on simple questions?
-
-Operational test:
-
-- Compare Always Full Reasoning vs Adaptive Routing.
-
-Metrics:
+指标：
 
 - Accuracy
-- Token usage
-- Latency
-- Cost per task
+- 平均 Agent 调用次数
+- 平均推理步数
+- latency
+- token usage
 
-## RQ6: Calibration
+## RQ4：Verification / Critic 是否能减少错误
 
-Question:
+问题：
 
-Are model confidence estimates calibrated, and can verification improve calibration?
+Verification Agent 或 Critic Agent 是否能减少 hallucination，并修正错误推理？
 
-Operational test:
+实验做法：
 
-- Collect confidence scores from each method.
-- Compare confidence against correctness.
+- 比较 Supervisor without Critic 和 Supervisor with Critic。
+- 同时记录“纠错”和“改错”两种情况。
 
-Metrics:
+指标：
 
-- Expected Calibration Error
+- Error Correction Rate
+- Correct-to-Wrong Revision Rate
+- Unsupported Claim Rate
+- Hallucination Rate
+
+## RQ5：自适应推理是否改善准确率与成本平衡
+
+问题：
+
+Adaptive Reasoning 能否让简单问题走短路径、困难问题走完整推理路径，从而在准确率和效率之间取得更好平衡？
+
+实验做法：
+
+- 比较 Always Full Reasoning 和 Adaptive Routing。
+
+指标：
+
+- Accuracy
+- token usage
+- latency
+- cost per task
+
+## RQ6：置信度是否可靠
+
+问题：
+
+模型输出的 confidence 是否经过良好校准？Verification 是否能改善校准？
+
+实验做法：
+
+- 收集每种方法的 confidence。
+- 比较 confidence 和实际 correct / incorrect 之间的关系。
+
+指标：
+
+- Expected Calibration Error, ECE
 - Brier Score
-- Reliability diagrams
+- Reliability Diagram

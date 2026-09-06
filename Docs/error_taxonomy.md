@@ -1,68 +1,81 @@
-# Error Taxonomy
+# 错误分类体系
 
-This taxonomy is the first version. It will be updated after real error analysis.
+这是 MedReason-Agent 的第一版错误分类。它不是最终版本，后续会根据真实实验错误样本继续修改。
 
-## Error Types
+## 错误类型
 
 `VISUAL_PERCEPTION_ERROR`
 
-The model misreads the image or misses a visible finding.
+视觉感知错误。模型看错图像、漏看图像中的明显发现，或把图像区域理解错。
 
 `KNOWLEDGE_ERROR`
 
-The model lacks or misuses medical knowledge.
+医学知识错误。模型缺少必要医学知识，或者错误使用医学知识。
 
 `RETRIEVAL_ERROR`
 
-The retrieval system returns irrelevant, misleading, or insufficient evidence.
+检索错误。RAG 返回的 evidence 不相关、误导、不充分，或者没有检索到关键知识。
 
 `REASONING_ERROR`
 
-The model has the needed information but reaches the wrong answer.
+推理错误。模型已经有足够信息，但推理链条出错，最终得到错误答案。
 
 `LOGICAL_LEAP`
 
-The conclusion goes beyond what the image, question, or evidence supports.
+逻辑跳跃。结论超出了图像、问题或 evidence 能支持的范围。
 
 `HALLUCINATION`
 
-The answer invents findings, patient details, or evidence not present in the input.
+幻觉。回答中编造了输入里不存在的图像发现、患者信息、医学证据或上下文。
 
 `SUPERVISOR_ROUTING_ERROR`
 
-The supervisor chooses the wrong path, such as skipping retrieval for a knowledge-heavy question.
+Supervisor 路由错误。比如知识密集问题本该检索 evidence，但 Supervisor 选择了 Direct 路径。
 
 `TOOL_SELECTION_ERROR`
 
-The system selects the wrong tool or uses the right tool at the wrong time.
+工具选择错误。系统选择了错误工具，或在错误时间调用了工具。
 
 `VERIFICATION_ERROR`
 
-The verifier fails to catch an error or incorrectly rejects a valid answer.
+验证错误。Verifier 没有发现错误，或者错误地否定了本来正确的答案。
 
 `CORRECT_TO_WRONG_REVISION`
 
-The initial answer is correct, but the critic or revision step changes it to an incorrect answer.
+正确答案被改错。初始答案正确，但 Critic / Revision 步骤把它改成了错误答案。
 
 `FINAL_ANSWER_FORMAT_ERROR`
 
-The final answer is semantically present but violates the required format.
+最终答案格式错误。语义上可能有答案，但没有遵守要求的输出格式，导致评估脚本无法正确读取。
 
 `UNKNOWN`
 
-The error cannot be confidently assigned.
+未知错误。无法可靠判断错误来源时使用。
 
-## Error Analysis Rule
+## 错误分析规则
 
-After each complete experiment, sample incorrect predictions and classify errors. Do not change the system based only on intuition.
+每次完整实验结束后，都要抽样 incorrect predictions 并分类。不能只靠感觉修改系统。
 
-Example report:
+示例：
 
 ```text
-100 incorrect samples:
+100 个错误样本：
 35% visual perception
 30% reasoning
 15% retrieval
 10% supervisor routing
 10% other
 ```
+
+## Critic 的特殊风险
+
+Verification Agent 不是天然有益的。它可能：
+
+- 把错误答案改对。
+- 发现 hallucination。
+- 也可能把正确答案改错。
+
+因此评估 Critic 时必须同时报告：
+
+- Correction Rate
+- Regression Rate / Correct-to-Wrong Revision Rate

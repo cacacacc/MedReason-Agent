@@ -1,33 +1,33 @@
-# Experiment Protocol
+# 实验协议
 
-All main experiments should follow this protocol unless the experiment explicitly studies one variable.
+所有主实验都必须遵守本协议，除非某个实验明确研究其中一个变量。这个项目的实验目标是做 controlled comparison，也就是一次只改变一个关键因素，尽量避免“结果变好了但不知道为什么”的问题。
 
-## Fixed Variables
+## 固定变量
 
-- Backbone: one main VLM for the controlled chain.
-- Dataset split: fixed per dataset.
-- Prompt version: versioned and logged.
-- Image preprocessing: fixed and logged.
-- Generation settings: deterministic where possible.
-- Evaluation scripts: same script for comparable experiments.
+- Backbone：主实验使用同一个 VLM。
+- Dataset split：同一个数据集使用固定划分。
+- Prompt version：提示词必须版本化，并写入结果记录。
+- Image preprocessing：图像预处理必须固定，并写入实验配置。
+- Generation settings：尽可能使用确定性解码。
+- Evaluation scripts：可比较实验必须使用同一套评估脚本。
 
-## Default Model Policy
+## 默认模型策略
 
-Main controlled experiments:
+主实验默认：
 
 - Qwen2.5-VL-7B-Instruct
 
-Development fallback:
+轻量开发 fallback：
 
 - Qwen2.5-VL-3B-Instruct
 
-External baseline only:
+外部 baseline：
 
 - LLaVA-Med
 
-Do not mix different backbones inside the main controlled comparison chain.
+不要在主对照链里混用不同 backbone。否则无法判断性能变化来自 reasoning architecture，还是来自模型本身不同。
 
-## Default Generation Settings
+## 默认生成参数
 
 ```yaml
 temperature: 0.0
@@ -39,20 +39,22 @@ seeds:
   - 3407
 ```
 
-If a provider does not support deterministic seeds, record that limitation in the run metadata.
+如果某个 API 或模型服务不支持严格 seed 控制，必须在 run metadata 里记录这个限制。
 
-## Dataset Scale Policy
+## 数据规模策略
 
-Every new pipeline must pass three scales before full evaluation:
+每个新 pipeline 都必须按下面顺序扩大规模：
 
 ```text
 Smoke Test: 10-20 samples
 Dev Experiment: 100-200 samples
 Intermediate Experiment: 500-1000 samples
-Full Experiment: stable pipeline only
+Full Experiment: 只有 pipeline 稳定后才运行
 ```
 
-## Main Experiment Chain
+这样做是为了避免一开始就在错误 pipeline 上浪费算力。
+
+## 主实验链
 
 ```text
 Experiment 0: Random / Majority Baseline
@@ -68,9 +70,9 @@ Experiment 9: Adaptive Reasoning
 Experiment 10: Optional LoRA
 ```
 
-## Required Result Fields
+## 必须记录的结果字段
 
-Every prediction record should include:
+每条 prediction record 至少包含：
 
 ```json
 {
@@ -98,14 +100,14 @@ Every prediction record should include:
 }
 ```
 
-## Reporting
+## 报告要求
 
-Report:
+最终报告需要包含：
 
-- Mean and standard deviation when multiple runs are available.
-- Accuracy and task-specific answer metrics.
-- Reliability metrics.
-- Efficiency metrics.
-- Error taxonomy breakdown.
+- 多次运行时的 mean ± std。
+- Accuracy 和任务相关答案指标。
+- Reliability metrics。
+- Efficiency metrics。
+- Error taxonomy breakdown。
 
-Do not rely on terminal output as the final experiment record. Save structured JSON / CSV files.
+不要只把结果打印到 terminal。所有实验结果必须保存成结构化 JSON / JSONL / CSV。

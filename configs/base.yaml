@@ -25,7 +25,11 @@ generation:
 
 dataset:
   primary: VQA-RAD
-  split_policy: fixed_split
+  split_policy: official_test_with_train_validation_split
+  validation_ratio: 0.15
+  split_seed: 42
+  raw_dir: Data/Raw/vqa_rad
+  processed_dir: Data/Processed/vqa_rad
 
 logging:
   save_jsonl: true

@@ -2,15 +2,15 @@
 
 > A Supervisor-Guided Multi-Agent Framework for Reliable Multimodal Medical Reasoning
 
-MedReason-Agent is a research-oriented AI project about multimodal medical visual question answering. The goal is not to build a clinical diagnosis product. The goal is to test whether explicit reasoning, retrieval, multi-agent collaboration, supervisor routing, and verification can improve the reliability of a frozen vision-language model on medical VQA benchmarks.
+MedReason-Agent 是一个科研型 AI 项目，研究对象是医学多模态视觉问答中的推理可靠性。它不是真实临床诊断产品，而是用 benchmark 实验测试：显式推理、RAG、多 Agent 协作、Supervisor 路由和 Verification 是否能提升 frozen VLM 的可靠性。
 
-## Research Focus
+## 研究重点
 
-The main research question is:
+主研究问题：
 
-Can a supervisor-guided multi-agent reasoning framework improve accuracy, evidence grounding, calibration, and efficiency compared with direct VLM inference?
+Supervisor-guided Multi-Agent reasoning framework 是否能比 Direct VLM inference 在 accuracy、evidence grounding、calibration 和 efficiency 上更可靠？
 
-The project will compare a controlled sequence of systems:
+项目会按 controlled experiment chain 逐步比较：
 
 1. Random / majority baseline
 2. Direct VLM
@@ -23,29 +23,30 @@ The project will compare a controlled sequence of systems:
 9. Adaptive reasoning
 10. Optional LoRA fine-tuning
 
-## Core Principle
+## 核心原则
 
-Main experiments use a frozen backbone. Improvements should come from reasoning architecture and evaluation design, not from changing model size between experiments.
+主实验使用 frozen backbone。我们希望证明提升来自 reasoning architecture 和 evaluation design，而不是来自不同实验使用了不同大小的模型。
 
-Default backbone:
+默认 backbone：
 
-- Main: Qwen2.5-VL-7B-Instruct
-- Lightweight development fallback: Qwen2.5-VL-3B-Instruct
+- 主实验：Qwen2.5-VL-7B-Instruct
+- 轻量开发 fallback：Qwen2.5-VL-3B-Instruct
 
-## Current Phase
+## 当前阶段
 
 Phase 0: Research Foundation + Repository Setup
 
-Current work:
+当前工作：
 
-- Define research questions.
-- Define controlled experiment protocol.
-- Define first error taxonomy.
-- Build learning materials for the project fundamentals.
+- 定义研究问题。
+- 定义统一实验协议。
+- 定义第一版错误分类。
+- 建立 VQA-RAD 数据导入流程。
+- 建立项目学习材料。
 
-No core agent code is implemented yet.
+当前还没有实现核心 Agent 代码。
 
-## Initial Structure
+## 当前结构
 
 ```text
 MedReason-Agent/
@@ -60,7 +61,8 @@ MedReason-Agent/
 ├── Docs/
 │   ├── research_questions.md
 │   ├── experiment_protocol.md
-│   └── error_taxonomy.md
+│   ├── error_taxonomy.md
+│   └── datasets.md
 ├── Experiments/
 ├── Results/
 ├── requirements/
@@ -70,7 +72,8 @@ MedReason-Agent/
 │   ├── rag.txt
 │   └── vlm.txt
 ├── scripts/
-│   └── check_environment.py
+│   ├── check_environment.py
+│   └── import_vqa_rad.py
 ├── src/
 │   └── medreason_agent/
 ├── assets/
@@ -83,13 +86,13 @@ MedReason-Agent/
 └── README.md
 ```
 
-## Medical Safety Boundary
+## 医学安全边界
 
-All outputs in this repository should be described as model predictions for benchmark research. They are not medical advice, clinical diagnosis, or a substitute for professional medical judgment.
+本项目所有输出都必须描述为 benchmark research 中的 model prediction。它们不是医疗建议、临床诊断，也不能替代专业医生判断。
 
-## Environment Setup
+## 环境安装
 
-Recommended local setup:
+推荐本地环境：
 
 ```powershell
 python -m venv .venv
@@ -98,7 +101,7 @@ python -m pip install --upgrade pip
 pip install -r requirements/dev.txt
 ```
 
-Optional dependency groups:
+可选依赖组：
 
 ```powershell
 pip install -r requirements/agent.txt
@@ -106,9 +109,29 @@ pip install -r requirements/rag.txt
 pip install -r requirements/vlm.txt
 ```
 
-Check the environment:
+检查环境：
 
 ```powershell
 python scripts/check_environment.py
 pytest -q
+```
+
+## 导入 VQA-RAD 数据
+
+```powershell
+.\.venv\Scripts\python.exe scripts\import_vqa_rad.py
+```
+
+导入完成后会生成：
+
+```text
+Data/Processed/vqa_rad/all.jsonl
+Data/Processed/vqa_rad/all.csv
+Data/Processed/vqa_rad/train.jsonl
+Data/Processed/vqa_rad/train.csv
+Data/Processed/vqa_rad/validation.jsonl
+Data/Processed/vqa_rad/validation.csv
+Data/Processed/vqa_rad/test.jsonl
+Data/Processed/vqa_rad/test.csv
+Data/Processed/vqa_rad/stats.json
 ```
