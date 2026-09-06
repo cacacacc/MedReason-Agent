@@ -1,0 +1,29 @@
+experiment_id: exp01_direct_vlm_qwen_7b_cuda_100
+name: Direct VLM Baseline - Qwen 2.5 VL 7B CUDA 100 Samples
+phase: 1
+inherits: configs/base.yaml
+
+method:
+  type: direct_vlm
+  backend: qwen2_5_vl
+  model_id: Qwen/Qwen2.5-VL-7B-Instruct
+  torch_dtype: bfloat16
+  device_map: auto
+  prompt_version: direct_v1
+  training_epochs: 0
+
+dataset:
+  name: VQA-RAD
+  split: test
+  scale: dev
+  max_samples: 100
+
+generation:
+  temperature: 0.0
+  top_p: 1.0
+  max_new_tokens: 64
+
+outputs:
+  result_dir: Results/exp01_direct_vlm_qwen_7b_cuda_100
+  prediction_file: predictions.jsonl
+  metrics_file: metrics.json

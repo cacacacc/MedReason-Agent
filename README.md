@@ -175,3 +175,24 @@ CPU 环境先运行 1 条样本 smoke test：
 ```
 
 更多说明见 [Docs/model_connection.md](Docs/model_connection.md)。
+
+## VQA-RAD Data Version Policy
+
+MedReason-Agent uses the OSF public VQA-RAD release. The repository-wide
+reproducible count policy is:
+
+```text
+Raw JSON QA records: 2248
+Image files: 315
+Referenced images: 314
+Official raw train pool: 1797
+Official raw test split: 451
+Project train split: 1527
+Project validation split: 270
+Project test split: 451
+```
+
+For this repository, VQA-RAD full test means `451` test samples. Do not use
+`464` or `3064` for the main VQA-RAD experiment count unless the project
+intentionally switches to another dataset mirror. See
+`Docs/vqa_rad_data_version_audit.md` for the audit.

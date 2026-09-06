@@ -37,4 +37,4 @@
 ## Gaps
 
 - Need to verify specific 2024-2026 papers for medical multi-agent reasoning, supervisor routing, multimodal RAG, and calibration before writing Related Work.
-- Need to choose the exact VQA-RAD source package and split policy before Phase 1 implementation.
+- VQA-RAD source package and split policy are fixed in `Docs/vqa_rad_data_version_audit.md`: OSF public release, 2,248 QA records, 315 image files, 314 referenced images, 1,797 official train-pool records, and 451 official test records.

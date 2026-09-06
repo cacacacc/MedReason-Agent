@@ -78,6 +78,26 @@ class Qwen25VLBackend:
         self._processor = None
         self._process_vision_info = None
 
+    @staticmethod
+    def _resolve_torch_dtype(torch_module, torch_dtype: str):
+        """Convert config strings into torch dtype objects."""
+        if torch_dtype in {"auto", ""}:
+            return "auto"
+
+        dtype_map = {
+            "float32": torch_module.float32,
+            "fp32": torch_module.float32,
+            "float16": torch_module.float16,
+            "fp16": torch_module.float16,
+            "bfloat16": torch_module.bfloat16,
+            "bf16": torch_module.bfloat16,
+        }
+        try:
+            return dtype_map[torch_dtype.lower()]
+        except KeyError as exc:
+            supported = ", ".join(sorted(dtype_map | {"auto": "auto"}))
+            raise ValueError(f"Unsupported torch_dtype={torch_dtype!r}. Use one of: {supported}") from exc
+
     def _load(self) -> None:
         """Load model dependencies lazily so normal tests do not require them."""
         if self._model is not None:
@@ -93,7 +113,11 @@ class Qwen25VLBackend:
                 ".\\.venv\\Scripts\\python.exe -m pip install -r requirements\\vlm.txt"
             ) from exc
 
-        torch_dtype = torch.float32 if self.device_map == "cpu" else self.torch_dtype
+        torch_dtype = (
+            torch.float32
+            if self.device_map == "cpu"
+            else self._resolve_torch_dtype(torch, self.torch_dtype)
+        )
         model_kwargs = {"torch_dtype": torch_dtype}
         if self.device_map != "cpu":
             model_kwargs["device_map"] = self.device_map

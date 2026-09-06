@@ -90,3 +90,27 @@ Data/
 - GitHub repo 应提交导入脚本、配置和文档，而不是直接提交数据本体。
 
 本地实验时重新运行导入脚本即可恢复数据。
+
+## VQA-RAD Unified Version Policy
+
+MedReason-Agent uses the OSF public VQA-RAD release downloaded by
+`scripts/import_vqa_rad.py`. All VQA-RAD experiments, reports, README text, and
+paper drafts should use this reproducible count policy:
+
+```text
+Raw JSON QA records: 2248
+Image files: 315
+Referenced images: 314
+Official raw train pool: 1797
+Official raw test split: 451
+Project train split: 1527
+Project validation split: 270
+Project test split: 451
+```
+
+For this repository, VQA-RAD full test means `451` test samples. Do not use
+`464` or `3064` for the main VQA-RAD experiment count unless the project
+intentionally switches to another dataset mirror and adds a new data-version
+audit.
+
+Detailed audit: `Docs/vqa_rad_data_version_audit.md`.
