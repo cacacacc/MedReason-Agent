@@ -38,7 +38,7 @@ BASE_PACKAGES = [
 OPTIONAL_PACKAGES = {
     "agent": ["langgraph", "langchain_core"],
     "rag": ["sentence_transformers", "qdrant_client"],
-    "vlm": ["transformers", "accelerate", "qwen_vl_utils"],
+    "vlm": ["torch", "transformers", "accelerate", "qwen_vl_utils"],
 }
 
 

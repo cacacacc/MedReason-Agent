@@ -59,15 +59,124 @@ class MockVLMBackend:
         )
 
 
-def create_vlm_backend(backend: str) -> VLMBackend:
+class Qwen25VLBackend:
+    """Local Hugging Face backend for Qwen2.5-VL models."""
+
+    backend_name = "qwen2_5_vl"
+
+    def __init__(
+        self,
+        model_id: str = "Qwen/Qwen2.5-VL-3B-Instruct",
+        torch_dtype: str = "auto",
+        device_map: str = "auto",
+    ) -> None:
+        self.model_name = model_id
+        self.model_id = model_id
+        self.torch_dtype = torch_dtype
+        self.device_map = device_map
+        self._model = None
+        self._processor = None
+        self._process_vision_info = None
+
+    def _load(self) -> None:
+        """Load model dependencies lazily so normal tests do not require them."""
+        if self._model is not None:
+            return
+
+        try:
+            import torch
+            from qwen_vl_utils import process_vision_info
+            from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration
+        except ImportError as exc:
+            raise RuntimeError(
+                "Qwen2.5-VL backend dependencies are missing. Install them with: "
+                ".\\.venv\\Scripts\\python.exe -m pip install -r requirements\\vlm.txt"
+            ) from exc
+
+        torch_dtype = torch.float32 if self.device_map == "cpu" else self.torch_dtype
+        model_kwargs = {"torch_dtype": torch_dtype}
+        if self.device_map != "cpu":
+            model_kwargs["device_map"] = self.device_map
+
+        self._model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+            self.model_id,
+            **model_kwargs,
+        )
+        if self.device_map == "cpu":
+            self._model.to("cpu")
+
+        self._processor = AutoProcessor.from_pretrained(self.model_id)
+        self._process_vision_info = process_vision_info
+
+    def generate(self, request: VLMRequest) -> VLMResponse:
+        self._load()
+
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image", "image": request.image_path},
+                    {"type": "text", "text": request.prompt},
+                ],
+            }
+        ]
+
+        text = self._processor.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
+        )
+        image_inputs, video_inputs = self._process_vision_info(messages)
+        inputs = self._processor(
+            text=[text],
+            images=image_inputs,
+            videos=video_inputs,
+            padding=True,
+            return_tensors="pt",
+        )
+
+        device = next(self._model.parameters()).device
+        inputs = inputs.to(device)
+
+        generated_ids = self._model.generate(
+            **inputs,
+            max_new_tokens=request.max_new_tokens,
+            do_sample=False,
+        )
+        generated_ids_trimmed = [
+            output_ids[len(input_ids) :]
+            for input_ids, output_ids in zip(inputs.input_ids, generated_ids, strict=True)
+        ]
+        output_text = self._processor.batch_decode(
+            generated_ids_trimmed,
+            skip_special_tokens=True,
+            clean_up_tokenization_spaces=False,
+        )[0].strip()
+
+        return VLMResponse(
+            answer=output_text,
+            raw_output=output_text,
+            confidence=None,
+            input_tokens=int(inputs.input_ids.shape[-1]),
+            output_tokens=int(generated_ids_trimmed[0].shape[-1]),
+        )
+
+
+def create_vlm_backend(
+    backend: str,
+    model_id: str | None = None,
+    torch_dtype: str = "auto",
+    device_map: str = "auto",
+) -> VLMBackend:
     """Create a VLM backend by name."""
     if backend == "mock":
         return MockVLMBackend()
 
     if backend == "qwen2_5_vl":
-        raise NotImplementedError(
-            "The qwen2_5_vl backend will be added after installing requirements/vlm.txt "
-            "and confirming local/API inference resources."
+        return Qwen25VLBackend(
+            model_id=model_id or "Qwen/Qwen2.5-VL-3B-Instruct",
+            torch_dtype=torch_dtype,
+            device_map=device_map,
         )
 
     raise ValueError(f"Unsupported VLM backend: {backend}")

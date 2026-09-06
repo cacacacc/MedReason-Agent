@@ -153,3 +153,25 @@ Results/exp01_direct_vlm/metrics.json
 ```
 
 真实 Qwen2.5-VL baseline 需要后续安装 `requirements/vlm.txt` 并实现/启用 `qwen2_5_vl` backend。
+
+## 接入真实 Qwen2.5-VL
+
+先按你的 CPU / CUDA 环境安装 PyTorch：
+
+```text
+https://pytorch.org/get-started/locally/
+```
+
+再安装 VLM 依赖：
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements\vlm.txt
+```
+
+CPU 环境先运行 1 条样本 smoke test：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\run_direct_vlm.py --config configs\experiments\exp01_direct_vlm_qwen_smoke.yaml
+```
+
+更多说明见 [Docs/model_connection.md](Docs/model_connection.md)。

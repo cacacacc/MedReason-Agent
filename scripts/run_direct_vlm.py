@@ -79,7 +79,12 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
     output_config = config["outputs"]
     generation_config = config["generation"]
 
-    backend = create_vlm_backend(backend_name or method.get("backend", "mock"))
+    backend = create_vlm_backend(
+        backend=backend_name or method.get("backend", "mock"),
+        model_id=method.get("model_id"),
+        torch_dtype=method.get("torch_dtype", "auto"),
+        device_map=method.get("device_map", "auto"),
+    )
     samples = load_vqa_rad_split(
         split=dataset_config["split"],
         max_samples=dataset_config.get("max_samples"),

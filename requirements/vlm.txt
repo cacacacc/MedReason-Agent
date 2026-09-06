@@ -1,4 +1,6 @@
 -r base.txt
+# Install PyTorch separately first according to your local CUDA / CPU setup:
+# https://pytorch.org/get-started/locally/
 accelerate>=0.30
 qwen-vl-utils>=0.0.8
 transformers>=4.45
