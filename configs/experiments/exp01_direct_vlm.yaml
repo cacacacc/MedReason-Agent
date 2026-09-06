@@ -1,10 +1,11 @@
 experiment_id: exp01_direct_vlm
 name: Direct VLM Baseline
-phase: 2
+phase: 1
 inherits: configs/base.yaml
 
 method:
   type: direct_vlm
+  backend: mock
   prompt_version: direct_v1
   training_epochs: 0
 

@@ -99,6 +99,7 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 pip install -r requirements/dev.txt
+pip install -e .
 ```
 
 可选依赖组：
@@ -135,3 +136,20 @@ Data/Processed/vqa_rad/test.jsonl
 Data/Processed/vqa_rad/test.csv
 Data/Processed/vqa_rad/stats.json
 ```
+
+## 运行 Direct VLM Baseline Smoke Test
+
+当前默认使用 `mock` backend，只用于验证实验管线，不代表真实模型结果：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\run_direct_vlm.py
+```
+
+输出：
+
+```text
+Results/exp01_direct_vlm/predictions.jsonl
+Results/exp01_direct_vlm/metrics.json
+```
+
+真实 Qwen2.5-VL baseline 需要后续安装 `requirements/vlm.txt` 并实现/启用 `qwen2_5_vl` backend。
