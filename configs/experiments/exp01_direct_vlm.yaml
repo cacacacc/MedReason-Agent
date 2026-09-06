@@ -1,0 +1,25 @@
+experiment_id: exp01_direct_vlm
+name: Direct VLM Baseline
+phase: 2
+inherits: configs/base.yaml
+
+method:
+  type: direct_vlm
+  prompt_version: direct_v1
+  training_epochs: 0
+
+dataset:
+  name: VQA-RAD
+  split: test
+  scale: smoke
+  max_samples: 20
+
+generation:
+  temperature: 0.0
+  top_p: 1.0
+  max_new_tokens: 256
+
+outputs:
+  result_dir: Results/exp01_direct_vlm
+  prediction_file: predictions.jsonl
+  metrics_file: metrics.json

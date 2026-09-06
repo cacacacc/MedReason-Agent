@@ -1,0 +1,19 @@
+experiment_id: exp00_majority
+name: Random / Majority Baseline
+phase: 1
+inherits: configs/base.yaml
+
+method:
+  type: non_model_baseline
+  prediction_strategy: majority_answer_by_answer_type
+
+dataset:
+  name: VQA-RAD
+  split: test
+  scale: smoke
+  max_samples: 20
+
+outputs:
+  result_dir: Results/exp00_majority
+  prediction_file: predictions.jsonl
+  metrics_file: metrics.json

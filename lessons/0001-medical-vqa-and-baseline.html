@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lesson 0001: Medical VQA and Baseline</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+  <main>
+    <h1>Lesson 0001: Medical VQA and Baseline</h1>
+    <p class="subtitle">MedReason-Agent Phase 0 的第一个知识点。</p>
+
+    <section>
+      <h2>本节目标</h2>
+      <p>你需要掌握一个核心判断：这个项目不是先做复杂 Agent，而是先建立 Medical VQA 任务和 baseline。没有 baseline，就无法证明 Supervisor Agent 是否真的有贡献。</p>
+    </section>
+
+    <section>
+      <h2>Medical VQA 是什么</h2>
+      <p>Medical VQA 是 Medical Visual Question Answering，意思是医学视觉问答。输入是一张医学图像和一个自然语言问题，输出是一个和图像相关的答案。</p>
+      <div class="box">
+        <p><strong>生活例子：</strong>你给一个医学生看一张 X-ray，然后问“图里显示的是哪个器官？”他必须看图回答，不能只靠背医学百科。</p>
+        <p><strong>项目例子：</strong>VQA-RAD 中一条样本包含 radiology image、question、ground-truth answer。模型必须根据图像和问题给出 benchmark prediction。</p>
+      </div>
+      <p>推荐阅读：<a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC6244189/">VQA-RAD 原始论文</a>。</p>
+    </section>
+
+    <section>
+      <h2>Baseline 是什么</h2>
+      <p>Baseline 是最低限度的可比较系统。它不是为了“厉害”，而是为了让后续方法有参照物。</p>
+      <div class="box">
+        <p><strong>生活例子：</strong>如果你想证明一个新学习方法有效，必须先知道不用这个方法时考试能得多少分。</p>
+        <p><strong>项目例子：</strong>Direct VLM 是核心 baseline。它只接收 Image + Question，然后直接输出 Answer。后续 CoT、RAG、Multi-Agent、Supervisor 都要和它比较。</p>
+      </div>
+    </section>
+
+    <section>
+      <h2>为什么不能直接做 Supervisor</h2>
+      <p>如果一开始就做完整 Supervisor Multi-Agent，最终即使准确率变高，也不知道提升来自哪里。可能来自更长 prompt，可能来自检索，可能来自 verifier，也可能只是随机波动。</p>
+      <p>科研项目需要 controlled experiment chain：每次只增加一个关键变量，观察指标变化。</p>
+      <pre><code>Direct VLM
+-> Structured Prompt
+-> Chain-of-Thought
+-> RAG
+-> Fixed Multi-Agent
+-> Supervisor Multi-Agent
+-> Supervisor + Verification</code></pre>
+    </section>
+
+    <section>
+      <h2>理解题</h2>
+      <ol>
+        <li>为什么 Medical VQA 不能只用文本医学知识来解决？</li>
+        <li>Direct VLM baseline 在这个项目中证明什么？</li>
+        <li>如果 Supervisor 方法比 Direct VLM 好，为什么还不能立刻说 Supervisor 有效？</li>
+      </ol>
+      <p>答完后让 Codex 逐题批改，再继续下一节。</p>
+    </section>
+  </main>
+</body>
+</html>
