@@ -1,0 +1,29 @@
+experiment_id: exp02_cot_qwen_smoke
+name: Chain-of-Thought Baseline - Qwen CPU Smoke
+phase: 2
+inherits: configs/base.yaml
+
+method:
+  type: cot_vlm
+  backend: qwen2_5_vl
+  model_id: Qwen/Qwen2.5-VL-3B-Instruct
+  torch_dtype: float32
+  device_map: cpu
+  prompt_version: cot_v1
+  training_epochs: 0
+
+dataset:
+  name: VQA-RAD
+  split: test
+  scale: smoke
+  max_samples: 1
+
+generation:
+  temperature: 0.0
+  top_p: 1.0
+  max_new_tokens: 128
+
+outputs:
+  result_dir: Results/exp02_cot_qwen_smoke
+  prediction_file: predictions.jsonl
+  metrics_file: metrics.json

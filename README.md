@@ -154,6 +154,24 @@ Results/exp01_direct_vlm/metrics.json
 
 真实 Qwen2.5-VL baseline 需要后续安装 `requirements/vlm.txt` 并实现/启用 `qwen2_5_vl` backend。
 
+## 运行 Chain-of-Thought Baseline Smoke Test
+
+当前默认使用 `mock` backend，只用于验证 CoT 实验管线：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\run_cot.py
+.\.venv\Scripts\python.exe scripts\compare_direct_vs_cot.py
+```
+
+输出：
+
+```text
+Results/exp02_cot/predictions.jsonl
+Results/exp02_cot/metrics.json
+Results/compare_direct_vs_cot/summary.json
+Results/compare_direct_vs_cot/comparisons.jsonl
+```
+
 ## 接入真实 Qwen2.5-VL
 
 先按你的 CPU / CUDA 环境安装 PyTorch：

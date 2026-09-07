@@ -1,0 +1,26 @@
+experiment_id: exp02_cot
+name: Chain-of-Thought Baseline
+phase: 2
+inherits: configs/base.yaml
+
+method:
+  type: cot_vlm
+  backend: mock
+  prompt_version: cot_v1
+  training_epochs: 0
+
+dataset:
+  name: VQA-RAD
+  split: test
+  scale: smoke
+  max_samples: 20
+
+generation:
+  temperature: 0.0
+  top_p: 1.0
+  max_new_tokens: 256
+
+outputs:
+  result_dir: Results/exp02_cot
+  prediction_file: predictions.jsonl
+  metrics_file: metrics.json

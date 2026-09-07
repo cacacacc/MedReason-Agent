@@ -49,13 +49,21 @@ class MockVLMBackend:
             answer = "yes"
         else:
             answer = "unknown"
+        if "Final Answer:" in request.prompt:
+            raw_output = (
+                "Observation: mock visual observation.\n"
+                "Reasoning: mock reasoning path for pipeline validation.\n"
+                f"Final Answer: {answer}"
+            )
+        else:
+            raw_output = answer
 
         return VLMResponse(
             answer=answer,
-            raw_output=answer,
+            raw_output=raw_output,
             confidence=None,
             input_tokens=len(request.prompt.split()),
-            output_tokens=len(answer.split()),
+            output_tokens=len(raw_output.split()),
         )
 
 
@@ -96,7 +104,9 @@ class Qwen25VLBackend:
             return dtype_map[torch_dtype.lower()]
         except KeyError as exc:
             supported = ", ".join(sorted(dtype_map | {"auto": "auto"}))
-            raise ValueError(f"Unsupported torch_dtype={torch_dtype!r}. Use one of: {supported}") from exc
+            raise ValueError(
+                f"Unsupported torch_dtype={torch_dtype!r}. Use one of: {supported}"
+            ) from exc
 
     def _load(self) -> None:
         """Load model dependencies lazily so normal tests do not require them."""
