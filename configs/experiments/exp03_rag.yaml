@@ -1,0 +1,35 @@
+experiment_id: exp03_rag
+name: Medical RAG Baseline - Mock Smoke
+phase: 3
+inherits: configs/base.yaml
+
+method:
+  type: rag_vlm
+  backend: mock
+  prompt_version: rag_v2
+  training_epochs: 0
+
+dataset:
+  name: VQA-RAD
+  split: test
+  scale: smoke
+  max_samples: 20
+
+retrieval:
+  retriever: keyword
+  reranker: keyword_reranker
+  corpus_path: Data/Processed/medical_kb/seed_chunks.jsonl
+  candidate_top_k: 5
+  top_k: 3
+  min_rerank_score: 0.0
+  max_chars_per_evidence: 700
+
+generation:
+  temperature: 0.0
+  top_p: 1.0
+  max_new_tokens: 256
+
+outputs:
+  result_dir: Results/exp03_rag
+  prediction_file: predictions.jsonl
+  metrics_file: metrics.json

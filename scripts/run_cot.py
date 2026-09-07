@@ -18,6 +18,11 @@ from tqdm import tqdm
 
 from medreason_agent.data.vqa_rad import VQARADSample, load_vqa_rad_split
 from medreason_agent.evaluation.answer_metrics import exact_match, summarize_answer_metrics
+from medreason_agent.experiments.resume import (
+    append_jsonl_record,
+    load_records_by_sample_id,
+    ordered_records_for_sample_ids,
+)
 from medreason_agent.models.vlm import VLMRequest, create_vlm_backend
 from medreason_agent.paths import resolve_project_path
 from medreason_agent.prompts.cot import build_cot_prompt, extract_final_answer
@@ -102,8 +107,21 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
         max_samples=dataset_config.get("max_samples"),
     )
 
-    records: list[dict[str, Any]] = []
-    for sample in tqdm(samples, desc=config["experiment_id"], ascii=True):
+    result_dir = resolve_project_path(output_config["result_dir"])
+    prediction_path = result_dir / output_config["prediction_file"]
+    metrics_path = result_dir / output_config["metrics_file"]
+
+    # 断点续跑：已经写入 predictions.jsonl 的 sample_id 会被跳过。
+    # 新结果每条即时追加，避免长时间 CoT 推理中断后丢失进度。
+    sample_ids = [sample.sample_id for sample in samples]
+    records_by_sample_id = load_records_by_sample_id(prediction_path)
+    missing_samples = [sample for sample in samples if sample.sample_id not in records_by_sample_id]
+    print(
+        f"RESUME existing={len(samples) - len(missing_samples)} "
+        f"missing={len(missing_samples)} total={len(samples)}"
+    )
+
+    for sample in tqdm(missing_samples, desc=config["experiment_id"], ascii=True):
         # Phase 2 要求模型在最终答案前暴露中间推理。
         # 这就是本阶段要研究的实验变量。
         prompt = build_cot_prompt(sample.question)
@@ -122,29 +140,26 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
         # 指标只比较 `Final Answer:` 后面的短答案。
         prediction = extract_final_answer(response.raw_output)
 
-        records.append(
-            build_prediction_record(
-                sample=sample,
-                prediction=prediction,
-                reasoning_output=response.raw_output,
-                metadata={
-                    "experiment_id": config["experiment_id"],
-                    "model": backend.model_name,
-                    "backend": backend.backend_name,
-                    "prompt_version": method["prompt_version"],
-                    "confidence": response.confidence,
-                    "latency_ms": latency_ms,
-                    "input_tokens": response.input_tokens,
-                    "output_tokens": response.output_tokens,
-                },
-            )
+        record = build_prediction_record(
+            sample=sample,
+            prediction=prediction,
+            reasoning_output=response.raw_output,
+            metadata={
+                "experiment_id": config["experiment_id"],
+                "model": backend.model_name,
+                "backend": backend.backend_name,
+                "prompt_version": method["prompt_version"],
+                "confidence": response.confidence,
+                "latency_ms": latency_ms,
+                "input_tokens": response.input_tokens,
+                "output_tokens": response.output_tokens,
+            },
         )
-
-    result_dir = resolve_project_path(output_config["result_dir"])
-    prediction_path = result_dir / output_config["prediction_file"]
-    metrics_path = result_dir / output_config["metrics_file"]
+        append_jsonl_record(prediction_path, record)
+        records_by_sample_id[sample.sample_id] = record
 
     # JSONL 输出后续会和 Phase 1 对比，用于统计 cot_helped 和 cot_hurt。
+    records = ordered_records_for_sample_ids(records_by_sample_id, sample_ids)
     write_jsonl(prediction_path, records)
     metrics = summarize_answer_metrics(records)
     metrics.update(
