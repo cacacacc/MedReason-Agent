@@ -1,4 +1,13 @@
-"""Run the Direct VLM baseline."""
+"""运行 Direct VLM baseline。
+
+Phase 1 实验流程：
+
+1. 读取一个 YAML 实验配置。
+2. 从 `Data/Processed` 读取 VQA-RAD split。
+3. 为每个 image-question pair 构造 direct-answer prompt。
+4. 调用配置中选择的 VLM backend。
+5. 保存逐样本 predictions 和整体 metrics。
+"""
 
 from __future__ import annotations
 
@@ -19,7 +28,7 @@ from medreason_agent.prompts.direct import build_direct_prompt
 
 
 def load_config(path: Path) -> dict[str, Any]:
-    """Load one YAML config file."""
+    """读取定义实验条件的 YAML 配置文件。"""
     with path.open("r", encoding="utf-8") as file:
         return yaml.safe_load(file)
 
@@ -30,7 +39,12 @@ def build_prediction_record(
     raw_output: str,
     metadata: dict[str, Any],
 ) -> dict[str, Any]:
-    """Build one project-standard prediction record."""
+    """构造一条项目标准 prediction record。
+
+    这个 schema 故意比 Phase 1 当前需要的字段更宽。后续阶段会填入
+    `reasoning_output`、`retrieved_evidence`、`agent_route` 等字段，
+    这样所有实验输出都能保持可比。
+    """
     correct = exact_match(response_answer, sample.answer)
     return {
         "experiment_id": metadata["experiment_id"],
@@ -64,7 +78,7 @@ def build_prediction_record(
 
 
 def write_jsonl(path: Path, records: list[dict[str, Any]]) -> None:
-    """Write prediction records as JSONL."""
+    """把 prediction records 写成 JSONL，每行对应一个样本。"""
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as file:
         for record in records:
@@ -72,19 +86,22 @@ def write_jsonl(path: Path, records: list[dict[str, Any]]) -> None:
 
 
 def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
-    """Run the baseline and return metrics."""
+    """运行 direct baseline，并返回整体指标。"""
     config = load_config(config_path)
     method = config["method"]
     dataset_config = config["dataset"]
     output_config = config["outputs"]
     generation_config = config["generation"]
 
+    # config 决定这是便宜的 mock smoke test 还是真实 Qwen 实验。
+    # runner 本身不关心具体模型细节。
     backend = create_vlm_backend(
         backend=backend_name or method.get("backend", "mock"),
         model_id=method.get("model_id"),
         torch_dtype=method.get("torch_dtype", "auto"),
         device_map=method.get("device_map", "auto"),
     )
+    # `max_samples` 实现 smoke -> dev -> full 的逐步扩展协议。
     samples = load_vqa_rad_split(
         split=dataset_config["split"],
         max_samples=dataset_config.get("max_samples"),
@@ -92,6 +109,7 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
 
     records: list[dict[str, Any]] = []
     for sample in tqdm(samples, desc=config["experiment_id"], ascii=True):
+        # Phase 1 只使用这个 prompt，不要求模型写推理过程。
         prompt = build_direct_prompt(sample.question)
         request = VLMRequest(
             image_path=str(sample.absolute_image_path),
@@ -100,6 +118,7 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
             max_new_tokens=int(generation_config["max_new_tokens"]),
         )
 
+        # 逐样本记录 latency，方便后续比较准确率提升是否值得额外运行成本。
         start = time.perf_counter()
         response = backend.generate(request)
         latency_ms = round((time.perf_counter() - start) * 1000, 3)
@@ -126,6 +145,8 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
     prediction_path = result_dir / output_config["prediction_file"]
     metrics_path = result_dir / output_config["metrics_file"]
 
+    # 先保存详细记录，再写 summary metrics。JSONL 是后续错误分析和
+    # Direct-vs-CoT 对比的数据来源。
     write_jsonl(prediction_path, records)
     metrics = summarize_answer_metrics(records)
     metrics.update(
@@ -147,7 +168,7 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run Direct VLM baseline.")
+    parser = argparse.ArgumentParser(description="运行 Direct VLM baseline。")
     parser.add_argument(
         "--config",
         type=Path,

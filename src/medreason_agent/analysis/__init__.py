@@ -1,1 +1,4 @@
-"""Experiment analysis utilities."""
+"""实验结果分析工具。
+
+这里放跨实验对比、错误分析和 helped/hurt 统计等逻辑，不直接运行大模型。
+"""

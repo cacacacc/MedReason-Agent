@@ -1,4 +1,9 @@
-"""Run the Chain-of-Thought VLM baseline."""
+"""运行 Chain-of-Thought VLM baseline。
+
+Phase 2 保持和 Phase 1 相同的 frozen VLM 与数据集，只把 prompt 改成要求
+Observation、Reasoning 和 Final Answer。完整推理文本用于后续分析，
+指标只基于抽取出的最终短答案计算。
+"""
 
 from __future__ import annotations
 
@@ -19,7 +24,7 @@ from medreason_agent.prompts.cot import build_cot_prompt, extract_final_answer
 
 
 def load_config(path: Path) -> dict[str, Any]:
-    """Load one YAML config file."""
+    """读取定义 CoT 实验条件的 YAML 配置文件。"""
     with path.open("r", encoding="utf-8") as file:
         return yaml.safe_load(file)
 
@@ -30,7 +35,11 @@ def build_prediction_record(
     reasoning_output: str,
     metadata: dict[str, Any],
 ) -> dict[str, Any]:
-    """Build one project-standard CoT prediction record."""
+    """构造一条项目标准 CoT prediction record。
+
+    `prediction` 是抽取出的最终短答案。`reasoning_output` 保存模型完整回答，
+    方便后续检查 CoT 到底帮助了还是伤害了结果。
+    """
     correct = exact_match(prediction, sample.answer)
     return {
         "experiment_id": metadata["experiment_id"],
@@ -64,7 +73,7 @@ def build_prediction_record(
 
 
 def write_jsonl(path: Path, records: list[dict[str, Any]]) -> None:
-    """Write prediction records as JSONL."""
+    """把 prediction records 写成 JSONL，每行对应一个样本。"""
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as file:
         for record in records:
@@ -72,19 +81,22 @@ def write_jsonl(path: Path, records: list[dict[str, Any]]) -> None:
 
 
 def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
-    """Run the CoT baseline and return metrics."""
+    """运行 CoT baseline，并返回整体指标。"""
     config = load_config(config_path)
     method = config["method"]
     dataset_config = config["dataset"]
     output_config = config["outputs"]
     generation_config = config["generation"]
 
+    # 使用和 Phase 1 相同的 backend factory，确保唯一有意改变的是
+    # prompt 和 final-answer 抽取方式。
     backend = create_vlm_backend(
         backend=backend_name or method.get("backend", "mock"),
         model_id=method.get("model_id"),
         torch_dtype=method.get("torch_dtype", "auto"),
         device_map=method.get("device_map", "auto"),
     )
+    # `max_samples` 支持 smoke、dev、full，不需要改代码。
     samples = load_vqa_rad_split(
         split=dataset_config["split"],
         max_samples=dataset_config.get("max_samples"),
@@ -92,6 +104,8 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
 
     records: list[dict[str, Any]] = []
     for sample in tqdm(samples, desc=config["experiment_id"], ascii=True):
+        # Phase 2 要求模型在最终答案前暴露中间推理。
+        # 这就是本阶段要研究的实验变量。
         prompt = build_cot_prompt(sample.question)
         request = VLMRequest(
             image_path=str(sample.absolute_image_path),
@@ -100,9 +114,12 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
             max_new_tokens=int(generation_config["max_new_tokens"]),
         )
 
+        # CoT 通常比直接回答生成更多 token，因此 Phase 2 尤其要记录
+        # latency 和 output tokens。
         start = time.perf_counter()
         response = backend.generate(request)
         latency_ms = round((time.perf_counter() - start) * 1000, 3)
+        # 指标只比较 `Final Answer:` 后面的短答案。
         prediction = extract_final_answer(response.raw_output)
 
         records.append(
@@ -127,6 +144,7 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
     prediction_path = result_dir / output_config["prediction_file"]
     metrics_path = result_dir / output_config["metrics_file"]
 
+    # JSONL 输出后续会和 Phase 1 对比，用于统计 cot_helped 和 cot_hurt。
     write_jsonl(prediction_path, records)
     metrics = summarize_answer_metrics(records)
     metrics.update(
@@ -148,7 +166,7 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run Chain-of-Thought VLM baseline.")
+    parser = argparse.ArgumentParser(description="运行 Chain-of-Thought VLM baseline。")
     parser.add_argument(
         "--config",
         type=Path,

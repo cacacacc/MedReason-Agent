@@ -1,4 +1,9 @@
-"""Vision-language model backends for baseline experiments."""
+"""baseline 实验使用的视觉语言模型 backend。
+
+其他实验代码都通过一个小接口和这里交互：`VLMRequest -> VLMResponse`。
+这样无论底层是 mock 还是真实 Qwen，Phase 1 direct inference 和 Phase 2 CoT
+inference 都能保持可比。
+"""
 
 from __future__ import annotations
 
@@ -8,7 +13,11 @@ from typing import Protocol
 
 @dataclass(frozen=True)
 class VLMRequest:
-    """Input to a VLM backend."""
+    """传给 VLM backend 的输入。
+
+    `prompt` 包含实验条件。Phase 1 要求短答案；Phase 2 要求
+    Observation / Reasoning / Final Answer。
+    """
 
     image_path: str
     question: str
@@ -18,7 +27,11 @@ class VLMRequest:
 
 @dataclass(frozen=True)
 class VLMResponse:
-    """Output from a VLM backend."""
+    """VLM backend 的输出。
+
+    `answer` 是 backend 的主要答案字段。`raw_output` 保留模型完整输出，
+    方便 CoT 运行后继续分析推理过程。
+    """
 
     answer: str
     raw_output: str
@@ -28,7 +41,11 @@ class VLMResponse:
 
 
 class VLMBackend(Protocol):
-    """Minimal interface implemented by all VLM backends."""
+    """所有 VLM backend 都要实现的最小接口。
+
+    每个实验 runner 都依赖这个协议，而不是依赖某个具体模型类。
+    这样我们可以在不重写评估 pipeline 的情况下切换 `mock` 和 `qwen2_5_vl`。
+    """
 
     model_name: str
     backend_name: str
@@ -38,17 +55,25 @@ class VLMBackend(Protocol):
 
 
 class MockVLMBackend:
-    """Deterministic backend used only to smoke-test the experiment pipeline."""
+    """只用于 smoke test 的确定性 backend。
+
+    Mock 结果永远不能作为正式科研结果。它的作用是在不加载大模型的情况下，
+    检查文件写入、指标计算和 CoT 解析流程是否正常。
+    """
 
     model_name = "mock-vlm"
     backend_name = "mock"
 
     def generate(self, request: VLMRequest) -> VLMResponse:
+        # 简单的 yes/no 规则让测试输出保持确定性。它故意很弱，
+        # 因为它只负责验证 pipeline，不负责提供真实模型能力。
         question = request.question.lower()
         if question.startswith(("is ", "are ", "does ", "do ", "can ", "has ", "have ")):
             answer = "yes"
         else:
             answer = "unknown"
+        # 如果 prompt 要求 CoT 段落，就返回结构化 mock 输出，
+        # 让 Phase 2 测试能走到同一个 final-answer 抽取逻辑。
         if "Final Answer:" in request.prompt:
             raw_output = (
                 "Observation: mock visual observation.\n"
@@ -68,7 +93,11 @@ class MockVLMBackend:
 
 
 class Qwen25VLBackend:
-    """Local Hugging Face backend for Qwen2.5-VL models."""
+    """本地 Hugging Face Qwen2.5-VL backend。
+
+    这是主实验使用的真实 frozen backbone。模型采用懒加载，
+    这样普通单元测试不会下载或初始化大模型。
+    """
 
     backend_name = "qwen2_5_vl"
 
@@ -109,7 +138,7 @@ class Qwen25VLBackend:
             ) from exc
 
     def _load(self) -> None:
-        """Load model dependencies lazily so normal tests do not require them."""
+        """懒加载模型依赖，避免普通单元测试必须初始化大模型。"""
         if self._model is not None:
             return
 
@@ -123,6 +152,8 @@ class Qwen25VLBackend:
                 ".\\.venv\\Scripts\\python.exe -m pip install -r requirements\\vlm.txt"
             ) from exc
 
+        # CPU 推理固定使用 float32，兼容性更稳。CUDA 实验使用 config 指定的 dtype，
+        # 例如 Qwen 7B 使用 bfloat16。
         torch_dtype = (
             torch.float32
             if self.device_map == "cpu"
@@ -145,6 +176,8 @@ class Qwen25VLBackend:
     def generate(self, request: VLMRequest) -> VLMResponse:
         self._load()
 
+        # Qwen2.5-VL 需要 chat-style 多模态消息：一个 image item 加一个 text prompt。
+        # Direct 和 CoT 实验都使用同一种消息结构。
         messages = [
             {
                 "role": "user",
@@ -155,6 +188,8 @@ class Qwen25VLBackend:
             }
         ]
 
+        # processor 会把 chat message 转成文本 tokens 和视觉 tensors。
+        # 这一步放在 backend 内部，runner 就不需要理解具体模型细节。
         text = self._processor.apply_chat_template(
             messages,
             tokenize=False,
@@ -177,6 +212,8 @@ class Qwen25VLBackend:
             max_new_tokens=request.max_new_tokens,
             do_sample=False,
         )
+        # `generate` 返回的是 prompt tokens + 新生成 tokens。
+        # 这里裁掉 prompt 部分，让 `raw_output` 只保留模型生成的答案。
         generated_ids_trimmed = [
             output_ids[len(input_ids) :]
             for input_ids, output_ids in zip(inputs.input_ids, generated_ids, strict=True)
@@ -202,7 +239,7 @@ def create_vlm_backend(
     torch_dtype: str = "auto",
     device_map: str = "auto",
 ) -> VLMBackend:
-    """Create a VLM backend by name."""
+    """根据实验配置里的 backend 名称创建 VLM backend。"""
     if backend == "mock":
         return MockVLMBackend()
 
