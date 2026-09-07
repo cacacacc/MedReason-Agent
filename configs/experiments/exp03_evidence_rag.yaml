@@ -1,14 +1,14 @@
-experiment_id: exp03_rag
-name: Medical RAG Baseline - Mock Smoke
+experiment_id: exp03_evidence_rag
+name: Medical Evidence RAG - Claim Verification Mock Smoke
 phase: 3
 inherits: configs/base.yaml
 
 method:
   type: rag_vlm
   backend: mock
-  prompt_version: rag_v3
-  prompt_contract: structured_rag_v3
-  rag_mode: knowledge_acquisition
+  prompt_version: evidence_rag_v1
+  prompt_contract: structured_evidence_verification_v1
+  rag_mode: claim_verification
   training_epochs: 0
 
 dataset:
@@ -32,6 +32,6 @@ generation:
   max_new_tokens: 256
 
 outputs:
-  result_dir: Results/exp03_rag
+  result_dir: Results/exp03_evidence_rag
   prediction_file: predictions.jsonl
   metrics_file: metrics.json

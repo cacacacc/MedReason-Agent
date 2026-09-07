@@ -8,8 +8,9 @@ VLM / CoT / RAG 这类实验通常运行时间较长，中断后如果从头开�
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 
 def load_records_by_sample_id(path: Path) -> dict[str, dict[str, Any]]:

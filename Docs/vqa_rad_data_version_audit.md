@@ -1,25 +1,24 @@
-# VQA-RAD Data Version Audit
+# VQA-RAD 数据版本审计
 
-This document fixes the dataset-count policy used by MedReason-Agent.
+本文档固定 MedReason-Agent 使用的 VQA-RAD 数据统计口径，避免后续实验报告里混用不同版本的数量。
 
-## Decision
+## 当前决定
 
-MedReason-Agent uses the official OSF VQA-RAD public release downloaded by
-`scripts/import_vqa_rad.py`.
+MedReason-Agent 使用 `scripts/import_vqa_rad.py` 下载的 OSF VQA-RAD 公共发布版本。
 
-Primary source files:
+主要原始文件：
 
 - `VQA_RAD Dataset Public.json`
 - `VQA_RAD Image Folder.zip`
 
-Project source URLs:
+项目使用的来源 URL：
 
 - `https://osf.io/download/6qdas/`
 - `https://files.osf.io/v1/resources/89kps/providers/osfstorage/5b21453986d8510011c277bc/?zip=`
 
-## Local Audit Result
+## 本地审计结果
 
-The current local import produced:
+当前本地导入结果：
 
 ```text
 Raw JSON QA records: 2248
@@ -33,30 +32,30 @@ Project validation split: 270
 Project test split: 451
 ```
 
-The project train/validation split is created from the official raw train pool
-with `validation_ratio=0.15` and `seed=42`. The official test split is preserved.
+项目的 train / validation split 从 official raw train pool 中生成：
 
-## Why Other Counts Appear
+```text
+validation_ratio: 0.15
+seed: 42
+```
 
-Different VQA-RAD papers and dataset mirrors report different counts because
-they use different counting policies.
+官方 test split 保持不变。
 
-- `2248` is the number of QA records in the OSF public JSON used by this repo.
-- `315` is the number of image files in the OSF image zip.
-- `314` is the number of images actually referenced by QA records.
-- `1797 + 451 = 2248` is the official raw train/test split derived from
-  `phrase_type`.
-- `1793 + 451 = 2244` appears in cleaned mirrors that remove four duplicate or
-  leaked triplets.
-- `3515` is a paper-level visual-question count that includes generated
-  question variants such as free-form, rephrased, and framed questions. It is
-  not the same as the OSF JSON QA-record count.
-- `3064` and `464` should not be used in this project unless we intentionally
-  switch to a different dataset release and document the source.
+## 为什么会出现其他数量
 
-## Reporting Policy
+不同 VQA-RAD 论文、镜像和清洗版本会报告不同数量，因为统计口径不同。
 
-Use this sentence in reports:
+- `2248` 是本仓库使用的 OSF 公共 JSON 中的 QA record 数量。
+- `315` 是 OSF image zip 中的图像文件数量。
+- `314` 是 QA records 实际引用到的图像数量。
+- `1797 + 451 = 2248` 是根据 `phrase_type` 得到的官方 raw train / test split。
+- `1793 + 451 = 2244` 常见于删除了少量重复或泄漏样本的清洗镜像。
+- `3515` 是论文层面的 visual-question 数量，包含 free-form、rephrased、framed 等问题变体，不等于 OSF JSON 里的 QA record 数量。
+- `3064` 和 `464` 不应该用于本项目主实验，除非我们明确切换到另一个数据发布版本，并记录来源和处理脚本。
+
+## 报告写法
+
+论文或 README 中建议使用下面这段表述：
 
 ```text
 We use the official OSF VQA-RAD public release, which contains 2,248 QA records
@@ -67,9 +66,9 @@ into train/validation with validation_ratio=0.15 and seed=42, resulting in
 1,527 train, 270 validation, and 451 test records.
 ```
 
-## Experiment Rule
+## 实验规则
 
-All VQA-RAD experiments in this repository must use:
+本仓库中所有 VQA-RAD 实验统一使用：
 
 ```text
 Smoke: 1-20 test samples
@@ -77,4 +76,4 @@ Dev: 100-200 test samples
 Full: 451 test samples
 ```
 
-Do not report VQA-RAD full-test experiments as 464 samples for this repository.
+不要把本仓库的 VQA-RAD full-test 实验报告成 464 samples。

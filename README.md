@@ -172,6 +172,76 @@ Results/compare_direct_vs_cot/summary.json
 Results/compare_direct_vs_cot/comparisons.jsonl
 ```
 
+## 运行 Medical RAG Smoke Test
+
+先构建一个很小的 seed medical knowledge base：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\build_medical_kb.py --seed-medical-vqa
+```
+
+再运行 Knowledge RAG baseline。它是“先查知识，再推理”：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\run_rag.py
+```
+
+也可以运行 Evidence RAG baseline。它是“先有 claim，再查证据验证”：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\run_rag.py --config configs\experiments\exp03_evidence_rag.yaml
+```
+
+运行 Knowledge + Evidence RAG Verifier。它先用 Knowledge RAG 辅助推理，再用
+Evidence RAG 验证 claim：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\run_rag.py --config configs\experiments\exp03_knowledge_evidence_rag.yaml
+```
+
+输出：
+
+```text
+Results/exp03_rag/predictions.jsonl
+Results/exp03_rag/metrics.json
+```
+
+Phase 3 会额外记录：
+
+```text
+evidence_quality_score
+mean_evidence_quality_score
+mean_question_coverage
+mean_answer_coverage
+evidence_empty_rate
+```
+
+当前 RAG prompt version 是 `rag_v3`。它会约束模型：
+
+```text
+Use retrieved evidence explicitly
+Do not introduce unsupported medical claims
+Separate image observation from external knowledge
+State uncertainty if evidence is insufficient
+```
+
+两种 RAG 在结果里通过 `rag_mode` 和 `agent_route` 区分：
+
+```text
+Knowledge RAG:
+rag_mode = knowledge_acquisition
+route = knowledge_agent -> retriever -> reranker -> evidence_filter -> clinical_reasoning_agent
+
+Evidence RAG:
+rag_mode = claim_verification
+route = reasoning_agent -> claim_extractor -> evidence_agent -> retriever -> reranker -> evidence_filter -> verifier_agent
+
+Knowledge + Evidence RAG Verifier:
+rag_mode = knowledge_then_claim_verification
+route = knowledge_agent -> retriever -> reranker -> evidence_filter -> reasoning_agent -> claim_extractor -> evidence_agent -> retriever -> reranker -> evidence_filter -> verifier_agent
+verifier decision = SUPPORTED / UNSUPPORTED / CONTRADICTED
+```
+
 ## 接入真实 Qwen2.5-VL
 
 先按你的 CPU / CUDA 环境安装 PyTorch：
@@ -194,10 +264,9 @@ CPU 环境先运行 1 条样本 smoke test：
 
 更多说明见 [Docs/model_connection.md](Docs/model_connection.md)。
 
-## VQA-RAD Data Version Policy
+## VQA-RAD 数据版本策略
 
-MedReason-Agent uses the OSF public VQA-RAD release. The repository-wide
-reproducible count policy is:
+MedReason-Agent 使用 OSF 公共版 VQA-RAD。当前项目统一采用下面的可复现统计口径：
 
 ```text
 Raw JSON QA records: 2248
@@ -210,7 +279,6 @@ Project validation split: 270
 Project test split: 451
 ```
 
-For this repository, VQA-RAD full test means `451` test samples. Do not use
-`464` or `3064` for the main VQA-RAD experiment count unless the project
-intentionally switches to another dataset mirror. See
-`Docs/vqa_rad_data_version_audit.md` for the audit.
+在本仓库中，VQA-RAD full test 指 `451` 条 test samples。除非项目明确切换到另一个
+dataset mirror，否则主实验不要使用 `464` 或 `3064` 作为 VQA-RAD 实验数量。数据版本
+审计见 `Docs/vqa_rad_data_version_audit.md`。

@@ -10,7 +10,9 @@ method:
   # 4070 显存通常是 12GB，bfloat16/float16 都是半精度；Ada 架构可用 bfloat16。
   torch_dtype: bfloat16
   device_map: auto
-  prompt_version: rag_v2
+  prompt_version: rag_v3
+  prompt_contract: structured_rag_v3
+  rag_mode: knowledge_acquisition
   training_epochs: 0
 
 dataset:

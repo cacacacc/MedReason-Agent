@@ -1,11 +1,9 @@
-"""运行 Phase 3 Medical RAG baseline。
+"""运行 Phase 3 Medical RAG experiments。
 
-RAG 流程：
+支持两条不同 RAG agent 路径：
 
-1. 读取 VQA-RAD 样本。
-2. 用问题检索本地医学知识库。
-3. 把图像、问题和 retrieved evidence 一起交给 VLM。
-4. 保存最终答案、完整 reasoning、检索证据和指标。
+1. Knowledge RAG：先检索知识，再让 VLM reasoning。
+2. Evidence RAG：先让 VLM 产生 claim，再检索证据做 verification。
 """
 
 from __future__ import annotations
@@ -13,24 +11,34 @@ from __future__ import annotations
 import argparse
 import json
 import time
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
 import yaml
 from tqdm import tqdm
 
+from medreason_agent.agents.rag_agents import (
+    RAGAgentResult,
+    RetrievalPipeline,
+    RetrievalSettings,
+    create_rag_agent,
+)
 from medreason_agent.data.vqa_rad import VQARADSample, load_vqa_rad_split
 from medreason_agent.evaluation.answer_metrics import exact_match, summarize_answer_metrics
+from medreason_agent.evaluation.evidence_metrics import (
+    score_evidence_quality,
+    summarize_evidence_quality,
+)
 from medreason_agent.experiments.resume import (
     append_jsonl_record,
     load_records_by_sample_id,
     ordered_records_for_sample_ids,
 )
-from medreason_agent.models.vlm import VLMRequest, create_vlm_backend
+from medreason_agent.models.vlm import create_vlm_backend
 from medreason_agent.paths import resolve_project_path
-from medreason_agent.prompts.rag import build_rag_prompt, extract_final_answer
-from medreason_agent.retrieval.keyword import KeywordRetriever, evidence_to_record, load_chunks
-from medreason_agent.retrieval.rerank import KeywordReranker, filter_evidence
+from medreason_agent.retrieval.keyword import KeywordRetriever, load_chunks
+from medreason_agent.retrieval.rerank import KeywordReranker
 
 
 def load_config(path: Path) -> dict[str, Any]:
@@ -41,56 +49,57 @@ def load_config(path: Path) -> dict[str, Any]:
 
 def build_prediction_record(
     sample: VQARADSample,
-    prediction: str,
-    reasoning_output: str,
-    retrieved_evidence: list[dict[str, Any]],
+    agent_result: RAGAgentResult,
     metadata: dict[str, Any],
 ) -> dict[str, Any]:
     """构造一条项目标准 RAG prediction record。"""
-    correct = exact_match(prediction, sample.answer)
+    correct = exact_match(agent_result.prediction, sample.answer)
+    # Evidence Quality Score 衡量检索证据和当前样本的相关性。
+    # 它和 answer accuracy 分开记录，方便后续判断问题出在检索还是生成。
+    evidence_quality = score_evidence_quality(
+        question=sample.question,
+        ground_truth=sample.answer,
+        evidence_records=agent_result.retrieved_evidence,
+    )
     return {
         "experiment_id": metadata["experiment_id"],
         "model": metadata["model"],
         "backend": metadata["backend"],
         "prompt_version": metadata["prompt_version"],
+        "prompt_contract": metadata["prompt_contract"],
+        "rag_mode": metadata["rag_mode"],
         "dataset": sample.dataset,
         "split": sample.split,
         "sample_id": sample.sample_id,
         "image_id": sample.image_id,
         "image_path": sample.image_path,
         "question": sample.question,
-        "prediction": prediction,
+        "prediction": agent_result.prediction,
         "ground_truth": sample.answer,
         "answer_type": sample.answer_type,
         "question_type": sample.question_type,
         "image_organ": sample.image_organ,
-        "reasoning_output": reasoning_output,
-        "raw_output": reasoning_output,
-        "retrieved_evidence": retrieved_evidence,
-        "tool_calls": [
-            {
-                "tool": "keyword_retriever",
-                "top_k": metadata["candidate_top_k"],
-                "num_candidates": metadata["num_candidates"],
-            },
-            {
-                "tool": metadata["reranker"],
-                "num_candidates": metadata["num_candidates"],
-                "num_reranked": metadata["num_reranked"],
-            },
-            {
-                "tool": "evidence_filter",
-                "top_k": metadata["top_k"],
-                "min_score": metadata["min_rerank_score"],
-                "num_evidence": len(retrieved_evidence),
-            }
-        ],
-        "agent_route": ["retriever", "reranker", "evidence_filter", "rag_vlm"],
-        "critic_decision": "",
-        "confidence": metadata.get("confidence"),
+        "reasoning_output": agent_result.reasoning_output,
+        "raw_output": agent_result.raw_output,
+        "retrieved_evidence": agent_result.retrieved_evidence,
+        "knowledge_query": agent_result.knowledge_query,
+        "evidence_query": agent_result.evidence_query,
+        "knowledge_evidence": agent_result.knowledge_evidence or [],
+        "verification_evidence": agent_result.verification_evidence or [],
+        "generated_claims": agent_result.generated_claims or [],
+        "initial_prediction": agent_result.initial_prediction,
+        "initial_reasoning_output": agent_result.initial_reasoning_output,
+        "verified_claim": agent_result.verified_claim,
+        "claim_verification_status": agent_result.claim_verification_status,
+        "evidence_quality_score": evidence_quality["evidence_quality_score"],
+        "evidence_quality": evidence_quality,
+        "tool_calls": agent_result.tool_calls,
+        "agent_route": agent_result.agent_route,
+        "critic_decision": agent_result.critic_decision,
+        "confidence": agent_result.confidence,
         "latency_ms": metadata["latency_ms"],
-        "input_tokens": metadata.get("input_tokens"),
-        "output_tokens": metadata.get("output_tokens"),
+        "input_tokens": agent_result.input_tokens,
+        "output_tokens": agent_result.output_tokens,
         "correct": correct,
         "error_type": "" if correct else "UNKNOWN",
     }
@@ -102,6 +111,51 @@ def write_jsonl(path: Path, records: list[dict[str, Any]]) -> None:
     with path.open("w", encoding="utf-8") as file:
         for record in records:
             file.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+def summarize_verification_status(records: list[dict[str, Any]]) -> dict[str, Any]:
+    """统计 verifier 的三类 claim verification 决策。"""
+    counts = Counter(
+        str(record.get("claim_verification_status", "")).strip() or "NOT_APPLICABLE"
+        for record in records
+    )
+    return {
+        "claim_verification_status_counts": dict(sorted(counts.items())),
+    }
+
+
+def is_current_rag_record(
+    record: dict[str, Any],
+    method: dict[str, Any],
+    expected_route: list[str],
+) -> bool:
+    """判断旧 prediction record 是否符合当前 RAG agent 协议。"""
+    if (
+        record.get("prompt_version") != method["prompt_version"]
+        or record.get("prompt_contract") != method["prompt_contract"]
+        or record.get("rag_mode") != method["rag_mode"]
+        or record.get("agent_route") != expected_route
+    ):
+        return False
+
+    required_fields = {
+        "knowledge_query",
+        "evidence_query",
+        "generated_claims",
+        "claim_verification_status",
+        "evidence_quality_score",
+    }
+    if any(field not in record for field in required_fields):
+        return False
+
+    if method["rag_mode"] in {"claim_verification", "knowledge_then_claim_verification"}:
+        return record.get("claim_verification_status") in {
+            "SUPPORTED",
+            "UNSUPPORTED",
+            "CONTRADICTED",
+        }
+
+    return True
 
 
 def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
@@ -120,8 +174,8 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
             "Run scripts/build_medical_kb.py before running Phase 3."
         )
 
-    # 第一版使用关键词检索器，先验证 RAG 实验格式。后续 BGE+Qdrant 可以替换这里，
-    # 但 prediction record 的 retrieved_evidence 字段保持一致。
+    # 当前先使用轻量 keyword retriever 跑通 agent 行为。后续替换 BGE/Qdrant 时，
+    # 只要保持 retriever 接口一致，Knowledge/Evidence 两类 agent 不需要重写。
     retriever = KeywordRetriever(load_chunks(corpus_path))
     reranker = KeywordReranker()
     backend = create_vlm_backend(
@@ -139,6 +193,24 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
     candidate_top_k = int(retrieval_config.get("candidate_top_k", max(top_k, 5)))
     min_rerank_score = float(retrieval_config.get("min_rerank_score", 0.0))
     max_chars_per_evidence = int(retrieval_config.get("max_chars_per_evidence", 700))
+    retrieval_settings = RetrievalSettings(
+        candidate_top_k=candidate_top_k,
+        top_k=top_k,
+        min_rerank_score=min_rerank_score,
+        max_chars_per_evidence=max_chars_per_evidence,
+        retriever_name=str(retrieval_config.get("retriever", "keyword_retriever")),
+        reranker_name=str(retrieval_config.get("reranker", "keyword_reranker")),
+    )
+    retrieval_pipeline = RetrievalPipeline(
+        retriever=retriever,
+        reranker=reranker,
+        settings=retrieval_settings,
+    )
+    rag_agent = create_rag_agent(
+        rag_mode=method["rag_mode"],
+        backend=backend,
+        retrieval_pipeline=retrieval_pipeline,
+    )
 
     result_dir = resolve_project_path(output_config["result_dir"])
     prediction_path = result_dir / output_config["prediction_file"]
@@ -147,12 +219,11 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
     # 断点续跑：RAG 每个样本都包含检索证据和 VLM 回答，跑得更慢，所以必须边跑边落盘。
     sample_ids = [sample.sample_id for sample in samples]
     existing_records_by_sample_id = load_records_by_sample_id(prediction_path)
-    expected_route = ["retriever", "reranker", "evidence_filter", "rag_vlm"]
+    expected_route = rag_agent.agent_route
     records_by_sample_id = {
         sample_id: record
         for sample_id, record in existing_records_by_sample_id.items()
-        if record.get("prompt_version") == method["prompt_version"]
-        and record.get("agent_route") == expected_route
+        if is_current_rag_record(record, method=method, expected_route=expected_route)
     }
     missing_samples = [sample for sample in samples if sample.sample_id not in records_by_sample_id]
     print(
@@ -161,54 +232,25 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
     )
 
     for sample in tqdm(missing_samples, desc=config["experiment_id"], ascii=True):
-        # RAG latency 包含检索和 VLM 生成两部分，因为用户最终感受到的是端到端耗时。
+        # RAG latency 包含检索和一次或多次 VLM 生成，因为用户最终感受到的是端到端耗时。
         start = time.perf_counter()
-        # Retriever 先召回候选 chunk，Reranker 再按问题相关性重排，Evidence Filter 只保留
-        # 最终传给 Reasoning Agent 的高质量证据。
-        candidate_evidence = retriever.retrieve(sample.question, candidate_top_k)
-        reranked_evidence = reranker.rerank(sample.question, candidate_evidence)
-        filtered_evidence = filter_evidence(
-            reranked_evidence,
-            top_k=top_k,
-            min_score=min_rerank_score,
-        )
-        retrieved = [evidence_to_record(item) for item in filtered_evidence]
-        prompt = build_rag_prompt(
-            question=sample.question,
-            evidence_records=retrieved,
-            max_chars_per_evidence=max_chars_per_evidence,
-        )
-        request = VLMRequest(
-            image_path=str(sample.absolute_image_path),
-            question=sample.question,
-            prompt=prompt,
+        agent_result = rag_agent.run(
+            sample=sample,
             max_new_tokens=int(generation_config["max_new_tokens"]),
         )
-
-        response = backend.generate(request)
         latency_ms = round((time.perf_counter() - start) * 1000, 3)
-        prediction = extract_final_answer(response.raw_output)
 
         record = build_prediction_record(
             sample=sample,
-            prediction=prediction,
-            reasoning_output=response.raw_output,
-            retrieved_evidence=retrieved,
+            agent_result=agent_result,
             metadata={
                 "experiment_id": config["experiment_id"],
                 "model": backend.model_name,
                 "backend": backend.backend_name,
                 "prompt_version": method["prompt_version"],
-                "confidence": response.confidence,
+                "prompt_contract": method["prompt_contract"],
+                "rag_mode": method["rag_mode"],
                 "latency_ms": latency_ms,
-                "input_tokens": response.input_tokens,
-                "output_tokens": response.output_tokens,
-                "top_k": top_k,
-                "candidate_top_k": candidate_top_k,
-                "min_rerank_score": min_rerank_score,
-                "reranker": retrieval_config.get("reranker", "keyword_reranker"),
-                "num_candidates": len(candidate_evidence),
-                "num_reranked": len(reranked_evidence),
             },
         )
         append_jsonl_record(prediction_path, record)
@@ -217,6 +259,8 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
     records = ordered_records_for_sample_ids(records_by_sample_id, sample_ids)
     write_jsonl(prediction_path, records)
     metrics = summarize_answer_metrics(records)
+    metrics.update(summarize_evidence_quality(records))
+    metrics.update(summarize_verification_status(records))
     metrics.update(
         {
             "experiment_id": config["experiment_id"],
@@ -224,6 +268,9 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
             "model": backend.model_name,
             "split": dataset_config["split"],
             "scale": dataset_config["scale"],
+            "prompt_version": method["prompt_version"],
+            "prompt_contract": method["prompt_contract"],
+            "rag_mode": method["rag_mode"],
             "retriever": retrieval_config.get("retriever", "keyword"),
             "reranker": retrieval_config.get("reranker", "keyword_reranker"),
             "top_k": top_k,

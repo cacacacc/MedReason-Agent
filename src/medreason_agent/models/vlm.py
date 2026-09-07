@@ -72,9 +72,46 @@ class MockVLMBackend:
             answer = "yes"
         else:
             answer = "unknown"
-        # 如果 prompt 要求 CoT 段落，就返回结构化 mock 输出，
+        # Evidence RAG / 组合 RAG 会先产生 claim，再要求 verifier 明确比较 claim 和 evidence。
+        if "Initial Claim:" in request.prompt and "Verification:" in request.prompt:
+            raw_output = (
+                "Observation: mock visual observation.\n"
+                f"Initial Claim: {answer}\n"
+                "Retrieved Evidence: mock retrieved evidence summary.\n"
+                "Verification: mock evidence check for pipeline validation.\n"
+                "Verification Status: SUPPORTED.\n"
+                "Unsupported Assumptions: None.\n"
+                "Uncertainty: mock uncertainty statement.\n"
+                f"Conclusion: {answer}\n"
+                f"Final Answer: {answer}"
+            )
+        # 组合 RAG 的第一轮 reasoning 会要求模型生成可验证 claims。
+        elif "Retrieved Knowledge:" in request.prompt and "Claims:" in request.prompt:
+            raw_output = (
+                "Observation: mock visual observation.\n"
+                "Retrieved Knowledge: mock retrieved knowledge summary.\n"
+                "Reasoning: mock knowledge-guided reasoning path.\n"
+                f"Claims:\n- {answer}\n"
+                "Unsupported Assumptions: None.\n"
+                "Uncertainty: mock uncertainty statement.\n"
+                f"Conclusion: {answer}\n"
+                f"Final Answer: {answer}"
+            )
+        # 如果 prompt 要求 RAG 结构，就返回完整 rag_v3 mock 输出，
+        # 让 Phase 3 smoke test 也能检查 unsupported assumptions 和 uncertainty 字段。
+        elif "Unsupported Assumptions:" in request.prompt:
+            raw_output = (
+                "Observation: mock visual observation.\n"
+                "Retrieved Evidence: mock retrieved evidence summary.\n"
+                "Reasoning: mock reasoning path for pipeline validation.\n"
+                "Unsupported Assumptions: None.\n"
+                "Uncertainty: mock uncertainty statement.\n"
+                f"Conclusion: {answer}\n"
+                f"Final Answer: {answer}"
+            )
+        # 如果 prompt 只要求 CoT 段落，就返回 CoT mock 输出，
         # 让 Phase 2 测试能走到同一个 final-answer 抽取逻辑。
-        if "Final Answer:" in request.prompt:
+        elif "Final Answer:" in request.prompt:
             raw_output = (
                 "Observation: mock visual observation.\n"
                 "Reasoning: mock reasoning path for pipeline validation.\n"

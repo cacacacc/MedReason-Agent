@@ -38,6 +38,8 @@ logging:
     - experiment_id
     - model
     - prompt_version
+    - prompt_contract
+    - rag_mode
     - dataset
     - split
     - sample_id
@@ -47,6 +49,17 @@ logging:
     - ground_truth
     - reasoning_output
     - retrieved_evidence
+    - knowledge_query
+    - evidence_query
+    - knowledge_evidence
+    - verification_evidence
+    - generated_claims
+    - initial_prediction
+    - initial_reasoning_output
+    - verified_claim
+    - claim_verification_status
+    - evidence_quality_score
+    - evidence_quality
     - tool_calls
     - agent_route
     - critic_decision

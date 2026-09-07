@@ -19,7 +19,6 @@ from medreason_agent.paths import resolve_project_path
 from medreason_agent.retrieval.chunking import KnowledgeDocument, chunk_documents
 from medreason_agent.retrieval.keyword import write_chunks
 
-
 SEED_DOCUMENTS = [
     KnowledgeDocument(
         doc_id="seed_chest_opacity",
@@ -27,7 +26,8 @@ SEED_DOCUMENTS = [
         text=(
             "Airspace consolidation on chest radiographs can appear as increased pulmonary "
             "opacity. It may obscure vessels and can be associated with infection, edema, "
-            "atelectasis, or other causes. Image findings must be interpreted with clinical context."
+            "atelectasis, or other causes. Image findings must be interpreted with "
+            "clinical context."
         ),
         source="seed_medical_vqa",
     ),
