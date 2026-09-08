@@ -26,6 +26,7 @@ from medreason_agent.agents.rag_agents import (
 )
 from medreason_agent.data.vqa_rad import VQARADSample, load_vqa_rad_split
 from medreason_agent.evaluation.answer_metrics import exact_match, summarize_answer_metrics
+from medreason_agent.evaluation.claim_status import summarize_claim_statuses
 from medreason_agent.evaluation.evidence_metrics import (
     score_evidence_quality,
     summarize_evidence_quality,
@@ -88,6 +89,7 @@ def build_prediction_record(
         "knowledge_evidence": agent_result.knowledge_evidence or [],
         "verification_evidence": agent_result.verification_evidence or [],
         "generated_claims": agent_result.generated_claims or [],
+        "claim_statuses": agent_result.claim_statuses or [],
         "initial_prediction": agent_result.initial_prediction,
         "initial_reasoning_output": agent_result.initial_reasoning_output,
         "verified_claim": agent_result.verified_claim,
@@ -143,6 +145,7 @@ def is_current_rag_record(
         "knowledge_query",
         "evidence_query",
         "generated_claims",
+        "claim_statuses",
         "claim_verification_status",
         "evidence_quality_score",
     }
@@ -272,6 +275,7 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
     write_jsonl(prediction_path, records)
     metrics = summarize_answer_metrics(records)
     metrics.update(summarize_evidence_quality(records))
+    metrics.update(summarize_claim_statuses(records))
     metrics.update(summarize_verification_status(records))
     metrics.update(
         {

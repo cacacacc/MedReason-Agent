@@ -32,6 +32,7 @@ Knowledge Agent
 -> Evidence Agent retrieves support
 -> Verifier compares Claim vs Evidence
 -> SUPPORTED / UNSUPPORTED / CONTRADICTED
+-> Claim Statuses
 -> Final Answer
 ```
 
@@ -148,6 +149,7 @@ initial_prediction
 initial_reasoning_output
 verified_claim
 evidence_query
+claim_statuses
 ```
 
 其中 `evidence_query` 来自初始 claim，而不是只来自原始 question。
@@ -187,9 +189,34 @@ rag_mode: knowledge_then_claim_verification
 knowledge_query: 原始问题
 evidence_query: 基于 claim 构造的验证 query
 generated_claims: Reasoning Agent 生成的可验证 claims
+claim_statuses: 每条 claim 的结构化状态
 claim_verification_status: SUPPORTED / UNSUPPORTED / CONTRADICTED
 critic_decision: 同 claim_verification_status
 ```
+
+`Claim Status`
+
+Phase 3 现在不只保存自由文本 claims，还会保存结构化 `claim_statuses`：
+
+```json
+{
+  "claim": "right lung opacity",
+  "status": "OBSERVED"
+}
+```
+
+允许状态：
+
+```text
+OBSERVED: 图像中直接观察到的 finding
+SUPPORTED: 被 retrieved evidence 支持的 claim
+HYPOTHESIS: 推理阶段提出但尚未验证的候选判断
+UNSUPPORTED: 当前证据不足以支持的 claim
+CONTRADICTED: 与证据冲突的 claim
+```
+
+这层设计是为了避免把推理假设当成医学事实。组合 RAG 中，同一个 claim 可能先以
+`HYPOTHESIS` 出现，再由 Verifier 标记为 `SUPPORTED / UNSUPPORTED / CONTRADICTED`。
 
 `Retriever`
 

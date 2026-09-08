@@ -21,12 +21,18 @@ You must follow these rules:
 2. Do not introduce unsupported medical claims.
 3. Separate image observation from external knowledge.
 4. State uncertainty if the evidence is insufficient.
+5. Label every claim with one status from OBSERVED, SUPPORTED, HYPOTHESIS,
+   UNSUPPORTED, CONTRADICTED.
 
 Use exactly the following format:
 
 Observation: describe only visual findings that are visible in the image.
 Retrieved Evidence: summarize only the retrieved evidence that is relevant to the question.
 Reasoning: connect the visual findings, question, and retrieved evidence.
+Claim Statuses: write JSON objects, one per line. Use OBSERVED for visible image
+findings, SUPPORTED for evidence-backed facts, HYPOTHESIS for possible
+conclusions, UNSUPPORTED for unsupported claims, and CONTRADICTED for
+evidence-conflicting claims.
 Unsupported Assumptions: list unsupported assumptions, or write None.
 Uncertainty: state uncertainty if the image or evidence is insufficient.
 Conclusion: provide the concise conclusion.
@@ -49,6 +55,8 @@ You must follow these rules:
 3. Separate image observation from external knowledge.
 4. State uncertainty if the knowledge is insufficient.
 5. Generate concise claims that can be checked by a verifier.
+6. Label every claim with one status from OBSERVED, SUPPORTED, HYPOTHESIS,
+   UNSUPPORTED, CONTRADICTED.
 
 Use exactly the following format:
 
@@ -56,6 +64,10 @@ Observation: describe only visual findings that are visible in the image.
 Retrieved Knowledge: summarize only retrieved knowledge relevant to the question.
 Reasoning: connect the visual findings, question, and retrieved knowledge.
 Claims: list one to three checkable claims, one claim per line.
+Claim Statuses: write JSON objects, one per line. Use OBSERVED for visible image
+findings, SUPPORTED for retrieved-knowledge facts, HYPOTHESIS for possible
+conclusions, UNSUPPORTED for unsupported claims, and CONTRADICTED for
+evidence-conflicting claims.
 Unsupported Assumptions: list unsupported assumptions, or write None.
 Uncertainty: state uncertainty if the image or knowledge is insufficient.
 Conclusion: provide the concise conclusion.
@@ -84,6 +96,7 @@ You must follow these rules:
 3. Separate image observation from external knowledge.
 4. State uncertainty if the evidence is insufficient.
 5. Compare the initial claim against the retrieved evidence.
+6. Label the verified claim with exactly one status: SUPPORTED, UNSUPPORTED, or CONTRADICTED.
 
 Use exactly the following format:
 
@@ -92,6 +105,8 @@ Initial Claim: restate the claim being verified.
 Retrieved Evidence: summarize only the retrieved evidence that is relevant to the claim.
 Verification: state whether evidence supports, contradicts, or is insufficient for the claim.
 Verification Status: choose exactly one of SUPPORTED, UNSUPPORTED, or CONTRADICTED.
+Claim Statuses: write one JSON object for the initial claim, using the same
+status as Verification Status.
 Unsupported Assumptions: list unsupported assumptions, or write None.
 Uncertainty: state uncertainty if the image or evidence is insufficient.
 Conclusion: provide the concise verified conclusion.

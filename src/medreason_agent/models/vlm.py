@@ -72,14 +72,50 @@ class MockVLMBackend:
             answer = "yes"
         else:
             answer = "unknown"
+        if "Act as a supervisor for a multimodal medical reasoning system" in request.prompt:
+            raw_output = (
+                "Selected Tools: Vision Agent, Retrieval Agent, Reasoning Agent, "
+                "Verifier Agent, Answer Agent\n"
+                "Rationale: mock supervisor selects the full reliable route."
+            )
+        elif "Act as a medical image specialist" in request.prompt:
+            raw_output = (
+                "Observation: mock visual observation.\n"
+                'Claim Statuses:\n{"claim": "mock visual observation", "status": "OBSERVED"}\n'
+                "Uncertainty: mock visual uncertainty statement."
+            )
+        elif "Act as a clinical reasoning expert" in request.prompt:
+            raw_output = (
+                "Reasoning: mock clinical reasoning path for pipeline validation.\n"
+                f"Claims:\n- {answer}\n"
+                f'Claim Statuses:\n{{"claim": "{answer}", "status": "HYPOTHESIS"}}\n'
+                f"Preliminary Answer: {answer}\n"
+                "Unsupported Assumptions: None."
+            )
+        elif "Check logical errors in the reasoning" in request.prompt:
+            raw_output = (
+                "Critique: no mock logical errors found.\n"
+                "Critic Decision: ACCEPT.\n"
+                "Unsupported Medical Claims: None."
+            )
+        elif "Verify the reasoning claims against retrieved evidence" in request.prompt:
+            raw_output = (
+                "Verification: mock claim-evidence comparison.\n"
+                "Verification Status: SUPPORTED.\n"
+                f'Claim Statuses:\n{{"claim": "{answer}", "status": "SUPPORTED"}}\n'
+                "Unsupported Medical Claims: None."
+            )
+        elif "Act as the final answer agent" in request.prompt:
+            raw_output = f"Conclusion: {answer}\nFinal Answer: {answer}"
         # Evidence RAG / 组合 RAG 会先产生 claim，再要求 verifier 明确比较 claim 和 evidence。
-        if "Initial Claim:" in request.prompt and "Verification:" in request.prompt:
+        elif "Initial Claim:" in request.prompt and "Verification:" in request.prompt:
             raw_output = (
                 "Observation: mock visual observation.\n"
                 f"Initial Claim: {answer}\n"
                 "Retrieved Evidence: mock retrieved evidence summary.\n"
                 "Verification: mock evidence check for pipeline validation.\n"
                 "Verification Status: SUPPORTED.\n"
+                f'Claim Statuses:\n{{"claim": "{answer}", "status": "SUPPORTED"}}\n'
                 "Unsupported Assumptions: None.\n"
                 "Uncertainty: mock uncertainty statement.\n"
                 f"Conclusion: {answer}\n"
@@ -92,6 +128,7 @@ class MockVLMBackend:
                 "Retrieved Knowledge: mock retrieved knowledge summary.\n"
                 "Reasoning: mock knowledge-guided reasoning path.\n"
                 f"Claims:\n- {answer}\n"
+                f'Claim Statuses:\n{{"claim": "{answer}", "status": "HYPOTHESIS"}}\n'
                 "Unsupported Assumptions: None.\n"
                 "Uncertainty: mock uncertainty statement.\n"
                 f"Conclusion: {answer}\n"
@@ -104,6 +141,7 @@ class MockVLMBackend:
                 "Observation: mock visual observation.\n"
                 "Retrieved Evidence: mock retrieved evidence summary.\n"
                 "Reasoning: mock reasoning path for pipeline validation.\n"
+                'Claim Statuses:\n{"claim": "mock visual observation", "status": "OBSERVED"}\n'
                 "Unsupported Assumptions: None.\n"
                 "Uncertainty: mock uncertainty statement.\n"
                 f"Conclusion: {answer}\n"

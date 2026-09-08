@@ -40,6 +40,7 @@ logging:
     - prompt_version
     - prompt_contract
     - rag_mode
+    - agent_mode
     - dataset
     - split
     - sample_id
@@ -48,12 +49,18 @@ logging:
     - prediction
     - ground_truth
     - reasoning_output
+    - agent_outputs
+    - shared_state
+    - state_compression
+    - memory_records
+    - memory_write_record
     - retrieved_evidence
     - knowledge_query
     - evidence_query
     - knowledge_evidence
     - verification_evidence
     - generated_claims
+    - claim_statuses
     - initial_prediction
     - initial_reasoning_output
     - verified_claim
@@ -61,7 +68,10 @@ logging:
     - evidence_quality_score
     - evidence_quality
     - tool_calls
+    - selected_tools
+    - expected_selected_tools
     - agent_route
+    - expected_agent_route
     - critic_decision
     - confidence
     - latency_ms

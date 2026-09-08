@@ -58,6 +58,11 @@ def test_knowledge_rag_retrieves_before_reasoning() -> None:
     assert result.prediction == "yes"
     assert result.evidence_query == "Is there right lung opacity?"
     assert result.initial_prediction == ""
+    assert {
+        "claim": "mock visual observation",
+        "status": "OBSERVED",
+        "source_agent": "clinical_reasoning_agent",
+    } in result.claim_statuses
     assert result.agent_route == [
         "knowledge_agent",
         "retriever",
@@ -81,6 +86,16 @@ def test_evidence_rag_retrieves_after_initial_claim() -> None:
     assert result.verified_claim == "yes"
     assert result.claim_verification_status == "SUPPORTED"
     assert result.critic_decision == "SUPPORTED"
+    assert {
+        "claim": "yes",
+        "status": "HYPOTHESIS",
+        "source_agent": "reasoning_agent",
+    } in result.claim_statuses
+    assert {
+        "claim": "yes",
+        "status": "SUPPORTED",
+        "source_agent": "verifier_agent",
+    } in result.claim_statuses
     assert "Claim: yes" in result.evidence_query
     assert result.agent_route == [
         "reasoning_agent",
@@ -115,6 +130,16 @@ def test_knowledge_then_evidence_rag_uses_both_rag_modes() -> None:
     assert result.generated_claims == ["yes"]
     assert result.claim_verification_status == "SUPPORTED"
     assert result.critic_decision == "SUPPORTED"
+    assert {
+        "claim": "yes",
+        "status": "HYPOTHESIS",
+        "source_agent": "reasoning_agent",
+    } in result.claim_statuses
+    assert {
+        "claim": "yes",
+        "status": "SUPPORTED",
+        "source_agent": "verifier_agent",
+    } in result.claim_statuses
     assert {item["evidence_stage"] for item in result.retrieved_evidence} == {
         "knowledge_acquisition",
         "claim_verification",

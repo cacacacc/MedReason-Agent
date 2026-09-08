@@ -1,0 +1,41 @@
+experiment_id: exp04_supervisor_multi_agent
+name: Supervisor Multi-Agent - Mock Smoke
+phase: 4
+inherits: configs/base.yaml
+
+method:
+  type: multi_agent
+  backend: mock
+  prompt_version: supervisor_multi_agent_v1
+  prompt_contract: structured_supervisor_agents_v1
+  agent_mode: supervisor_multi_agent
+  rag_mode: supervised_retrieval_verification
+  training_epochs: 0
+
+dataset:
+  name: VQA-RAD
+  split: test
+  scale: smoke
+  max_samples: 20
+
+retrieval:
+  enabled: true
+  retriever: keyword
+  reranker: keyword_reranker
+  corpus_name: seed_medical_vqa
+  corpus_path: Data/Processed/medical_kb/seed_chunks.jsonl
+  candidate_top_k: 5
+  top_k: 3
+  min_rerank_score: 0.0
+  max_chars_per_evidence: 500
+
+generation:
+  temperature: 0.0
+  top_p: 1.0
+  max_new_tokens: 256
+
+outputs:
+  result_dir: Results/exp04_supervisor_multi_agent
+  prediction_file: predictions.jsonl
+  metrics_file: metrics.json
+

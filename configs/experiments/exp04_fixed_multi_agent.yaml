@@ -1,0 +1,33 @@
+experiment_id: exp04_fixed_multi_agent
+name: Fixed Multi-Agent - Mock Smoke
+phase: 4
+inherits: configs/base.yaml
+
+method:
+  type: multi_agent
+  backend: mock
+  prompt_version: fixed_multi_agent_v1
+  prompt_contract: structured_fixed_agents_v1
+  agent_mode: fixed_multi_agent
+  rag_mode: none
+  training_epochs: 0
+
+dataset:
+  name: VQA-RAD
+  split: test
+  scale: smoke
+  max_samples: 20
+
+retrieval:
+  enabled: false
+
+generation:
+  temperature: 0.0
+  top_p: 1.0
+  max_new_tokens: 256
+
+outputs:
+  result_dir: Results/exp04_fixed_multi_agent
+  prediction_file: predictions.jsonl
+  metrics_file: metrics.json
+
