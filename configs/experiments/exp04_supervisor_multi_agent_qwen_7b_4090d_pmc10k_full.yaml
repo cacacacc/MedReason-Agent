@@ -1,0 +1,50 @@
+experiment_id: exp04_supervisor_multi_agent_qwen_7b_4090d_pmc10k_full
+name: Supervisor Multi-Agent - Qwen 2.5 VL 7B 4090D PMC 10k Full Test
+phase: 4
+inherits: configs/base.yaml
+
+method:
+  type: multi_agent
+  backend: qwen2_5_vl
+  # AutoDL 上传模型后，建议改成本地路径：
+  # /root/autodl-tmp/models/Qwen2.5-VL-7B-Instruct
+  model_id: Qwen/Qwen2.5-VL-7B-Instruct
+  torch_dtype: bfloat16
+  device_map: auto
+  prompt_version: supervisor_multi_agent_v1
+  prompt_contract: structured_supervisor_agents_v1
+  agent_mode: supervisor_multi_agent
+  rag_mode: supervised_retrieval_verification
+  training_epochs: 0
+
+dataset:
+  name: VQA-RAD
+  split: test
+  scale: full
+  # 当前 OSF 公共版 VQA-RAD test 是 451 条。
+  max_samples: null
+
+retrieval:
+  enabled: true
+  retriever: faiss
+  embedding_model: BAAI/bge-small-en-v1.5
+  index_path: Data/Processed/medical_kb/pmc_10k_bge_small.faiss
+  metadata_path: Data/Processed/medical_kb/pmc_10k_bge_small_metadata.jsonl
+  reranker: keyword_reranker
+  corpus_name: pmc_abstracts_10k
+  corpus_path: Data/Processed/medical_kb/pmc_10k_chunks.jsonl
+  candidate_top_k: 10
+  top_k: 5
+  min_rerank_score: 0.0
+  max_chars_per_evidence: 500
+
+generation:
+  temperature: 0.0
+  top_p: 1.0
+  max_new_tokens: 256
+
+outputs:
+  result_dir: Results/exp04_supervisor_multi_agent_qwen_7b_4090d_pmc10k_full
+  prediction_file: predictions.jsonl
+  metrics_file: metrics.json
+

@@ -16,6 +16,11 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from medreason_agent.data.vqa_rad import VQARADSample
+from medreason_agent.evaluation.claim_status import (
+    build_claim_record,
+    claims_to_status_records,
+    parse_claim_status_lines,
+)
 from medreason_agent.models.vlm import VLMBackend, VLMRequest
 from medreason_agent.prompts.cot import build_cot_prompt
 from medreason_agent.prompts.rag import (
@@ -87,6 +92,7 @@ class RAGAgentResult:
     knowledge_evidence: list[dict] | None = None
     verification_evidence: list[dict] | None = None
     generated_claims: list[str] | None = None
+    claim_statuses: list[dict] | None = None
     claim_verification_status: str = ""
     critic_decision: str = ""
     initial_prediction: str = ""
@@ -202,6 +208,10 @@ class KnowledgeRAGAgent:
                 *self.retrieval_pipeline.build_tool_calls(trace, stage="pre_reasoning"),
                 {"tool": "vlm_generate", "stage": "clinical_reasoning"},
             ],
+            claim_statuses=parse_claim_status_lines(
+                response.raw_output,
+                source_agent="clinical_reasoning_agent",
+            ),
             confidence=response.confidence,
             input_tokens=response.input_tokens,
             output_tokens=response.output_tokens,
@@ -260,6 +270,18 @@ class EvidenceRAGAgent:
             )
         )
         verification_status = extract_verification_status(verification_response.raw_output)
+        verifier_claim_statuses = parse_claim_status_lines(
+            verification_response.raw_output,
+            source_agent="verifier_agent",
+        )
+        if not verifier_claim_statuses:
+            verifier_claim_statuses = [
+                build_claim_record(
+                    claim=initial_prediction,
+                    status=verification_status,
+                    source_agent="verifier_agent",
+                )
+            ]
         return RAGAgentResult(
             prediction=extract_final_answer(verification_response.raw_output),
             reasoning_output=verification_response.raw_output,
@@ -276,6 +298,14 @@ class EvidenceRAGAgent:
             initial_prediction=initial_prediction,
             initial_reasoning_output=initial_response.raw_output,
             verified_claim=initial_prediction,
+            claim_statuses=[
+                build_claim_record(
+                    claim=initial_prediction,
+                    status="HYPOTHESIS",
+                    source_agent="reasoning_agent",
+                ),
+                *verifier_claim_statuses,
+            ],
             claim_verification_status=verification_status,
             critic_decision=verification_status,
             confidence=verification_response.confidence,
@@ -360,6 +390,28 @@ class KnowledgeThenEvidenceRAGAgent:
             )
         )
         verification_status = extract_verification_status(verification_response.raw_output)
+        initial_claim_statuses = parse_claim_status_lines(
+            initial_response.raw_output,
+            source_agent="reasoning_agent",
+        )
+        if not initial_claim_statuses:
+            initial_claim_statuses = claims_to_status_records(
+                generated_claims,
+                status="HYPOTHESIS",
+                source_agent="reasoning_agent",
+            )
+        verifier_claim_statuses = parse_claim_status_lines(
+            verification_response.raw_output,
+            source_agent="verifier_agent",
+        )
+        if not verifier_claim_statuses:
+            verifier_claim_statuses = [
+                build_claim_record(
+                    claim=claim,
+                    status=verification_status,
+                    source_agent="verifier_agent",
+                )
+            ]
         knowledge_evidence = _tag_evidence_stage(
             knowledge_trace.evidence_records,
             stage="knowledge_acquisition",
@@ -396,6 +448,10 @@ class KnowledgeThenEvidenceRAGAgent:
             knowledge_evidence=knowledge_evidence,
             verification_evidence=verification_evidence,
             generated_claims=generated_claims,
+            claim_statuses=[
+                *initial_claim_statuses,
+                *verifier_claim_statuses,
+            ],
             claim_verification_status=verification_status,
             critic_decision=verification_status,
             initial_prediction=initial_prediction,

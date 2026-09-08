@@ -214,6 +214,7 @@ mean_evidence_quality_score
 mean_question_coverage
 mean_answer_coverage
 evidence_empty_rate
+claim_status_counts
 ```
 
 当前 RAG prompt version 是 `rag_v3`。它会约束模型：
@@ -223,6 +224,7 @@ Use retrieved evidence explicitly
 Do not introduce unsupported medical claims
 Separate image observation from external knowledge
 State uncertainty if evidence is insufficient
+Label every claim as OBSERVED / SUPPORTED / HYPOTHESIS / UNSUPPORTED / CONTRADICTED
 ```
 
 两种 RAG 在结果里通过 `rag_mode` 和 `agent_route` 区分：
@@ -240,7 +242,42 @@ Knowledge + Evidence RAG Verifier:
 rag_mode = knowledge_then_claim_verification
 route = knowledge_agent -> retriever -> reranker -> evidence_filter -> reasoning_agent -> claim_extractor -> evidence_agent -> retriever -> reranker -> evidence_filter -> verifier_agent
 verifier decision = SUPPORTED / UNSUPPORTED / CONTRADICTED
+claim_statuses = per-claim OBSERVED / SUPPORTED / HYPOTHESIS / UNSUPPORTED / CONTRADICTED records
 ```
+
+`HYPOTHESIS` 只表示推理候选判断，不能当作已确认医学事实；只有 `OBSERVED` 和
+`SUPPORTED` 可以作为较强证据进入结论分析。
+
+Phase 4 Multi-Agent 使用 sample-level shared state：
+
+```text
+Agent raw output -> State Compression -> SharedAgentState -> Next Agent
+```
+
+结果会额外记录：
+
+```text
+shared_state
+state_compression
+mean_state_compression_ratio
+memory_records
+memory_write_record
+mean_persistent_memory_hits
+```
+
+当前压缩方法是 `section_extract_v1`，只保留关键段落、retrieved evidence 摘要和
+claim statuses。它不是跨样本长期记忆，不会把一个病例的信息带到另一个病例。
+
+需要跨对话/跨运行存在的 memory 时，使用 persistent memory ablation 配置：
+
+```powershell
+python scripts/run_multi_agent.py --config configs/experiments/exp04_supervisor_multi_agent_memory.yaml
+python scripts/run_multi_agent.py --config configs/experiments/exp04_supervisor_multi_agent_qwen_7b_4090d_pmc10k_memory_20.yaml
+python scripts/run_multi_agent.py --config configs/experiments/exp04_supervisor_multi_agent_qwen_7b_4090d_pmc10k_memory_full.yaml
+```
+
+Persistent memory 默认写入 `Experiments/memory/*.jsonl`，下次运行仍然存在。
+默认不保存 `ground_truth`，也不把历史 `prediction` 注入 prompt，减少 benchmark 泄漏。
 
 ## AutoDL 4090D Phase 3 配置
 
@@ -334,6 +371,31 @@ Ablation top-k: 3 / 5 / 10
 python scripts/run_rag.py --config configs/experiments/exp03_rag_qwen_7b_4090d_pmc10k_full.yaml
 python scripts/run_rag.py --config configs/experiments/exp03_knowledge_evidence_rag_qwen_7b_4090d_pmc10k_full.yaml
 ```
+
+## 运行 Phase 4 Supervisor Multi-Agent
+
+本地先跑 mock smoke：
+
+```bash
+python scripts/run_multi_agent.py --config configs/experiments/exp04_fixed_multi_agent.yaml
+python scripts/run_multi_agent.py --config configs/experiments/exp04_supervisor_multi_agent.yaml
+```
+
+AutoDL 4090D 上先跑 20 条：
+
+```bash
+python scripts/run_multi_agent.py --config configs/experiments/exp04_fixed_multi_agent_qwen_7b_4090d_20.yaml
+python scripts/run_multi_agent.py --config configs/experiments/exp04_supervisor_multi_agent_qwen_7b_4090d_pmc10k_20.yaml
+```
+
+20 条稳定后跑 full：
+
+```bash
+python scripts/run_multi_agent.py --config configs/experiments/exp04_fixed_multi_agent_qwen_7b_4090d_full.yaml
+python scripts/run_multi_agent.py --config configs/experiments/exp04_supervisor_multi_agent_qwen_7b_4090d_pmc10k_full.yaml
+```
+
+Phase 4 文档见 [Docs/phase4_supervisor_multi_agent.md](Docs/phase4_supervisor_multi_agent.md)。
 
 ## 接入真实 Qwen2.5-VL
 

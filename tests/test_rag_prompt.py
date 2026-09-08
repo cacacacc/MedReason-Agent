@@ -26,6 +26,8 @@ def test_build_rag_prompt_contains_evidence_and_sections() -> None:
     assert "Separate image observation from external knowledge" in prompt
     assert "State uncertainty if the evidence is insufficient" in prompt
     assert "Unsupported Assumptions:" in prompt
+    assert "Claim Statuses:" in prompt
+    assert "HYPOTHESIS" in prompt
     assert "Uncertainty:" in prompt
     assert "Conclusion:" in prompt
     assert "Final Answer:" in prompt
@@ -61,6 +63,7 @@ def test_build_evidence_verification_prompt_contains_claim_contract() -> None:
     assert "Verify the initial medical claim" in prompt
     assert "Initial Claim:" in prompt
     assert "Verification:" in prompt
+    assert "Claim Statuses:" in prompt
     assert "Compare the initial claim against the retrieved evidence" in prompt
 
 
