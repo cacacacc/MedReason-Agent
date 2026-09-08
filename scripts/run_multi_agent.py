@@ -145,6 +145,7 @@ def build_prediction_record(
         "generated_claims": result.generated_claims,
         "claim_statuses": result.claim_statuses,
         "claim_verification_status": result.claim_verification_status,
+        "answer_gate": result.answer_gate,
         "evidence_quality_score": evidence_quality["evidence_quality_score"],
         "evidence_quality": evidence_quality,
         "selected_tools": result.selected_tools,
@@ -189,6 +190,7 @@ def is_current_record(record: dict[str, Any], method: dict[str, Any]) -> bool:
         and "state_compression" in record
         and "memory_records" in record
         and "memory_write_record" in record
+        and "answer_gate" in record
         and "error_attribution" in record
     )
 
@@ -216,6 +218,8 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
         backend=backend,
         retrieval_pipeline=retrieval_pipeline,
         memory_store=memory_store,
+        dynamic_routing=bool(method.get("dynamic_routing", False)),
+        deterministic_answer_gate=bool(method.get("deterministic_answer_gate", False)),
     )
     samples = load_vqa_rad_split(
         split=dataset_config["split"],

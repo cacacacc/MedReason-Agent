@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+from collections import Counter
+
 from medreason_agent.evaluation.claim_status import has_unsupported_or_contradicted_claim
 
 
@@ -90,6 +92,10 @@ def summarize_agent_metrics(records: list[dict]) -> dict[str, float | int | None
         if (ratio := record.get("state_compression", {}).get("compression_ratio")) is not None
     ]
     memory_counts = [len(record.get("memory_records", [])) for record in records]
+    gate_counts = Counter(
+        str(record.get("answer_gate", {}).get("decision", "MISSING") or "MISSING")
+        for record in records
+    )
     return {
         "mean_reasoning_score": sum(reasoning_scores) / total,
         "hallucination_rate": sum(hallucination_flags) / total,
@@ -102,4 +108,5 @@ def summarize_agent_metrics(records: list[dict]) -> dict[str, float | int | None
             else None
         ),
         "mean_persistent_memory_hits": sum(memory_counts) / total,
+        "answer_gate_counts": dict(sorted(gate_counts.items())),
     }

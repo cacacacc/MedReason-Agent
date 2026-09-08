@@ -6,7 +6,7 @@ inherits: configs/base.yaml
 method:
   type: cot_vlm
   backend: qwen2_5_vl
-  model_id: Qwen/Qwen2.5-VL-7B-Instruct
+  model_id: /root/autodl-tmp/models/Qwen2.5-VL-7B-Instruct
   torch_dtype: bfloat16
   device_map: auto
   prompt_version: cot_v1

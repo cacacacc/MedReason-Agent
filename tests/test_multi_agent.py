@@ -3,7 +3,7 @@ from medreason_agent.agents.multi_agent import FixedMultiAgent, SupervisorMultiA
 from medreason_agent.agents.rag_agents import RetrievalPipeline, RetrievalSettings
 from medreason_agent.data.vqa_rad import VQARADSample
 from medreason_agent.evaluation.agent_metrics import summarize_agent_metrics
-from medreason_agent.models.vlm import MockVLMBackend
+from medreason_agent.models.vlm import MockVLMBackend, VLMRequest, VLMResponse
 from medreason_agent.retrieval.chunking import KnowledgeDocument, chunk_document
 from medreason_agent.retrieval.keyword import KeywordRetriever
 from medreason_agent.retrieval.rerank import KeywordReranker
@@ -60,6 +60,40 @@ def _retrieval_pipeline() -> RetrievalPipeline:
     )
 
 
+class AnswerOnlySupervisorBackend(MockVLMBackend):
+    def generate(self, request: VLMRequest) -> VLMResponse:
+        if "Act as a supervisor for a multimodal medical reasoning system" in request.prompt:
+            raw_output = (
+                "Selected Tools: Answer Agent\n"
+                "Rationale: the question can be answered directly."
+            )
+            return VLMResponse(
+                answer=raw_output,
+                raw_output=raw_output,
+                input_tokens=len(request.prompt.split()),
+                output_tokens=len(raw_output.split()),
+            )
+        return super().generate(request)
+
+
+class UnsupportedVerifierBackend(MockVLMBackend):
+    def generate(self, request: VLMRequest) -> VLMResponse:
+        if "Verify the reasoning claims against retrieved evidence" in request.prompt:
+            raw_output = (
+                "Verification: the retrieved evidence does not support the claim.\n"
+                "Verification Status: UNSUPPORTED.\n"
+                'Claim Statuses:\n{"claim": "yes", "status": "UNSUPPORTED"}\n'
+                "Unsupported Medical Claims: yes."
+            )
+            return VLMResponse(
+                answer=raw_output,
+                raw_output=raw_output,
+                input_tokens=len(request.prompt.split()),
+                output_tokens=len(raw_output.split()),
+            )
+        return super().generate(request)
+
+
 def test_fixed_multi_agent_runs_fixed_route() -> None:
     result = FixedMultiAgent(MockVLMBackend()).run(_sample(), max_new_tokens=64)
 
@@ -105,6 +139,39 @@ def test_supervisor_multi_agent_runs_retrieval_and_verifier_route() -> None:
     assert result.selected_tools == result.expected_selected_tools
     assert result.shared_state["retrieved_evidence"]
     assert "Claim Statuses:" in result.shared_state["compressed_context"]
+    assert result.answer_gate["decision"] == "DISABLED"
+
+
+def test_supervisor_selected_tools_control_actual_route() -> None:
+    result = SupervisorMultiAgent(
+        backend=AnswerOnlySupervisorBackend(),
+        retrieval_pipeline=_retrieval_pipeline(),
+        dynamic_routing=True,
+    ).run(_sample(), max_new_tokens=64)
+
+    assert result.selected_tools == ["Answer Agent"]
+    assert result.agent_route == ["supervisor_agent", "answer_agent"]
+    assert result.expected_agent_route == ["supervisor_agent", "answer_agent"]
+    assert result.agent_outputs["vision"] == ""
+    assert result.agent_outputs["reasoning"] == ""
+    assert result.agent_outputs["verifier"] == ""
+    assert result.retrieved_evidence == []
+    assert result.generated_claims == []
+    assert result.prediction == "yes"
+
+
+def test_answer_gate_forces_uncertain_for_unsupported_claim() -> None:
+    result = SupervisorMultiAgent(
+        backend=UnsupportedVerifierBackend(),
+        retrieval_pipeline=_retrieval_pipeline(),
+        deterministic_answer_gate=True,
+    ).run(_sample(), max_new_tokens=64)
+
+    assert result.claim_verification_status == "UNSUPPORTED"
+    assert result.answer_gate["decision"] == "RESTRICT_UNSUPPORTED"
+    assert result.answer_gate["forced_prediction"] == "uncertain"
+    assert result.prediction == "uncertain"
+    assert "Answer Gate: RESTRICT_UNSUPPORTED" in result.shared_state["compressed_context"]
 
 
 def test_supervisor_multi_agent_uses_persistent_memory(tmp_path) -> None:
@@ -158,6 +225,7 @@ def test_summarize_agent_metrics() -> None:
                     "candidate_error_types": [],
                     "requires_human_review": False,
                 },
+                "answer_gate": {"decision": "ALLOW"},
             }
         ]
     )
@@ -167,3 +235,4 @@ def test_summarize_agent_metrics() -> None:
     assert metrics["mean_tool_selection_accuracy"] == 1.0
     assert metrics["mean_state_compression_ratio"] == 0.5
     assert metrics["mean_persistent_memory_hits"] == 1.0
+    assert metrics["answer_gate_counts"] == {"ALLOW": 1}

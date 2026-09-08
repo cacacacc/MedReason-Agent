@@ -10,6 +10,7 @@ from medreason_agent.agents.state import SharedAgentState
 from medreason_agent.data.vqa_rad import VQARADSample
 from medreason_agent.evaluation.claim_status import (
     claims_to_status_records,
+    normalize_claim_status,
     parse_claim_status_lines,
 )
 from medreason_agent.models.vlm import VLMBackend, VLMRequest
@@ -47,6 +48,7 @@ class MultiAgentResult:
     claim_statuses: list[dict]
     shared_state: dict
     critic_decision: str
+    answer_gate: dict
     claim_verification_status: str = ""
     evidence_query: str = ""
     memory_records: list[dict] | None = None
@@ -127,6 +129,9 @@ class FixedMultiAgent:
             claim_statuses=critic_claim_statuses,
         )
 
+        answer_gate = _build_answer_gate(shared_state.claim_statuses)
+        shared_state.add_agent_output("answer_gate", _format_answer_gate(answer_gate))
+
         answer = self._generate(
             sample,
             build_answer_prompt(
@@ -136,6 +141,10 @@ class FixedMultiAgent:
             max_new_tokens,
         )
         shared_state.add_agent_output("answer_agent", answer.raw_output)
+        gated_prediction = _apply_answer_gate(
+            extract_final_answer(answer.raw_output),
+            answer_gate,
+        )
         generated_claims = extract_claims(reasoning.raw_output)
         if not shared_state.claim_statuses:
             shared_state.extend_claim_statuses(
@@ -159,17 +168,18 @@ class FixedMultiAgent:
             self.memory_store,
             sample=sample,
             shared_state=shared_state_record,
-            prediction=extract_final_answer(answer.raw_output),
+            prediction=gated_prediction,
             experiment_id=experiment_id,
         )
         return MultiAgentResult(
-            prediction=extract_final_answer(answer.raw_output),
+            prediction=gated_prediction,
             reasoning_output=reasoning.raw_output,
             raw_output=answer.raw_output,
             agent_outputs={
                 "vision": vision.raw_output,
                 "reasoning": reasoning.raw_output,
                 "critic": critic.raw_output,
+                "answer_gate": _format_answer_gate(answer_gate),
                 "answer": answer.raw_output,
             },
             agent_route=list(self.expected_agent_route),
@@ -187,6 +197,7 @@ class FixedMultiAgent:
             claim_statuses=claim_statuses,
             shared_state=shared_state_record,
             critic_decision=extract_critic_decision(critic.raw_output),
+            answer_gate=answer_gate,
             memory_records=memory_records,
             memory_write_record=memory_write_record,
             input_tokens=_sum_optional_many(
@@ -241,10 +252,14 @@ class SupervisorMultiAgent:
         backend: VLMBackend,
         retrieval_pipeline: RetrievalPipeline | None = None,
         memory_store: PersistentAgentMemoryStore | None = None,
+        dynamic_routing: bool = False,
+        deterministic_answer_gate: bool = False,
     ) -> None:
         self.backend = backend
         self.retrieval_pipeline = retrieval_pipeline
         self.memory_store = memory_store
+        self.dynamic_routing = dynamic_routing
+        self.deterministic_answer_gate = deterministic_answer_gate
 
     def run(
         self,
@@ -261,27 +276,57 @@ class SupervisorMultiAgent:
             build_supervisor_prompt(sample.question),
             max_new_tokens,
         )
-        selected_tools = extract_selected_tools(supervisor.raw_output)
+        selected_tools = _normalize_selected_tools(
+            extract_selected_tools(supervisor.raw_output),
+            fallback=self.expected_selected_tools,
+        )
         shared_state.set_selected_tools(selected_tools)
         shared_state.add_agent_output("supervisor_agent", supervisor.raw_output)
         agent_route = ["supervisor_agent"]
+        tool_calls = [{"tool": "vlm_generate", "stage": "supervisor_agent"}]
+        can_retrieve = self.retrieval_pipeline is not None
+        if self.dynamic_routing:
+            should_run_vision = _tool_selected(selected_tools, "Vision Agent")
+            should_run_retrieval = (
+                _tool_selected(selected_tools, "Retrieval Agent") and can_retrieve
+            )
+            should_run_verifier = _tool_selected(selected_tools, "Verifier Agent") and can_retrieve
+            should_run_reasoning = (
+                _tool_selected(selected_tools, "Reasoning Agent") or should_run_verifier
+            )
+            planned_agent_route = _planned_route_from_tools(
+                selected_tools=selected_tools,
+                can_retrieve=can_retrieve,
+            )
+            expected_selected_tools = list(selected_tools)
+        else:
+            should_run_vision = True
+            should_run_retrieval = can_retrieve
+            should_run_reasoning = True
+            should_run_verifier = can_retrieve
+            planned_agent_route = list(self.expected_agent_route)
+            expected_selected_tools = list(self.expected_selected_tools)
 
-        vision = self._generate(sample, build_vision_prompt(sample.question), max_new_tokens)
-        vision_claim_statuses = parse_claim_status_lines(
-            vision.raw_output,
-            source_agent="vision_agent",
-        )
-        shared_state.add_agent_output(
-            "vision_agent",
-            vision.raw_output,
-            claim_statuses=vision_claim_statuses,
-        )
-        agent_route.append("vision_agent")
+        vision = None
+        vision_output = ""
+        if should_run_vision:
+            vision = self._generate(sample, build_vision_prompt(sample.question), max_new_tokens)
+            vision_output = vision.raw_output
+            vision_claim_statuses = parse_claim_status_lines(
+                vision.raw_output,
+                source_agent="vision_agent",
+            )
+            shared_state.add_agent_output(
+                "vision_agent",
+                vision.raw_output,
+                claim_statuses=vision_claim_statuses,
+            )
+            agent_route.append("vision_agent")
+            tool_calls.append({"tool": "vlm_generate", "stage": "vision_agent"})
 
         evidence_query = sample.question
         retrieved_evidence: list[dict] = []
-        retrieval_tool_calls: list[dict] = []
-        if self.retrieval_pipeline is not None:
+        if should_run_retrieval:
             trace = self.retrieval_pipeline.retrieve(evidence_query)
             retrieved_evidence = trace.evidence_records
             shared_state.add_retrieved_evidence(
@@ -292,6 +337,7 @@ class SupervisorMultiAgent:
                 trace,
                 stage="retrieval_agent",
             )
+            tool_calls.extend(retrieval_tool_calls)
             agent_route.append("retrieval_agent")
 
         max_chars = (
@@ -299,29 +345,35 @@ class SupervisorMultiAgent:
             if self.retrieval_pipeline is not None
             else 700
         )
+        reasoning = None
+        reasoning_output = ""
         evidence_block = format_evidence_block(retrieved_evidence, max_chars_per_evidence=max_chars)
-        reasoning = self._generate(
-            sample,
-            build_reasoning_prompt(
-                sample.question,
-                evidence_block=evidence_block,
-                shared_state_context=shared_state.compressed_context(),
-            ),
-            max_new_tokens,
-        )
-        reasoning_claim_statuses = parse_claim_status_lines(
-            reasoning.raw_output,
-            source_agent="reasoning_agent",
-        )
-        shared_state.add_agent_output(
-            "reasoning_agent",
-            reasoning.raw_output,
-            claim_statuses=reasoning_claim_statuses,
-        )
-        agent_route.append("reasoning_agent")
+        if should_run_reasoning:
+            reasoning = self._generate(
+                sample,
+                build_reasoning_prompt(
+                    sample.question,
+                    vision_output=vision_output,
+                    evidence_block=evidence_block,
+                    shared_state_context=shared_state.compressed_context(),
+                ),
+                max_new_tokens,
+            )
+            reasoning_output = reasoning.raw_output
+            reasoning_claim_statuses = parse_claim_status_lines(
+                reasoning.raw_output,
+                source_agent="reasoning_agent",
+            )
+            shared_state.add_agent_output(
+                "reasoning_agent",
+                reasoning.raw_output,
+                claim_statuses=reasoning_claim_statuses,
+            )
+            agent_route.append("reasoning_agent")
+            tool_calls.append({"tool": "vlm_generate", "stage": "reasoning_agent"})
 
-        claims = extract_claims(reasoning.raw_output)
-        if not _has_reasoning_claim_status(shared_state):
+        claims = extract_claims(reasoning_output)
+        if should_run_reasoning and not _has_reasoning_claim_status(shared_state):
             shared_state.extend_claim_statuses(
                 claims_to_status_records(
                     claims,
@@ -331,12 +383,13 @@ class SupervisorMultiAgent:
             )
         verification_status = ""
         verifier_output = ""
-        if self.retrieval_pipeline is not None:
-            claim = claims[0] if claims else extract_final_answer(reasoning.raw_output)
+        verifier = None
+        if should_run_verifier:
+            claim = claims[0] if claims else extract_final_answer(reasoning_output)
             evidence_query = build_claim_verification_query(
                 question=sample.question,
                 claim=claim,
-                reasoning_output=reasoning.raw_output,
+                reasoning_output=reasoning_output,
             )
             verifier_trace = self.retrieval_pipeline.retrieve(evidence_query)
             verifier_evidence = verifier_trace.evidence_records
@@ -345,12 +398,11 @@ class SupervisorMultiAgent:
                 verifier_evidence,
                 stage="verifier_retrieval",
             )
-            retrieval_tool_calls.extend(
-                self.retrieval_pipeline.build_tool_calls(
-                    verifier_trace,
-                    stage="verifier_retrieval",
-                )
+            verifier_retrieval_tool_calls = self.retrieval_pipeline.build_tool_calls(
+                verifier_trace,
+                stage="verifier_retrieval",
             )
+            tool_calls.extend(verifier_retrieval_tool_calls)
             verifier = self._generate(
                 sample,
                 build_verifier_prompt(
@@ -382,72 +434,74 @@ class SupervisorMultiAgent:
                 claim_statuses=verifier_claim_statuses,
             )
             agent_route.append("verifier_agent")
-        else:
-            verifier = None
+            tool_calls.append({"tool": "vlm_generate", "stage": "verifier_agent"})
 
+        answer_gate = _build_answer_gate(
+            shared_state.claim_statuses,
+            verification_status=verification_status,
+            enabled=self.deterministic_answer_gate,
+        )
+        shared_state.add_agent_output("answer_gate", _format_answer_gate(answer_gate))
         answer = self._generate(
             sample,
             build_answer_prompt(
                 sample.question,
+                vision_output=vision_output,
+                reasoning_output=reasoning_output,
+                critic_output=verifier_output,
                 shared_state_context=shared_state.compressed_context(),
             ),
             max_new_tokens,
         )
         shared_state.add_agent_output("answer_agent", answer.raw_output)
         agent_route.append("answer_agent")
+        tool_calls.append({"tool": "vlm_generate", "stage": "answer_agent"})
+        gated_prediction = _apply_answer_gate(
+            extract_final_answer(answer.raw_output),
+            answer_gate,
+        )
         shared_state_record = shared_state.to_record()
         memory_write_record = _append_persistent_memory(
             self.memory_store,
             sample=sample,
             shared_state=shared_state_record,
-            prediction=extract_final_answer(answer.raw_output),
+            prediction=gated_prediction,
             experiment_id=experiment_id,
         )
         return MultiAgentResult(
-            prediction=extract_final_answer(answer.raw_output),
-            reasoning_output=reasoning.raw_output,
+            prediction=gated_prediction,
+            reasoning_output=reasoning_output,
             raw_output=answer.raw_output,
             agent_outputs={
                 "supervisor": supervisor.raw_output,
-                "vision": vision.raw_output,
-                "reasoning": reasoning.raw_output,
+                "vision": vision_output,
+                "reasoning": reasoning_output,
                 "verifier": verifier_output,
+                "answer_gate": _format_answer_gate(answer_gate),
                 "answer": answer.raw_output,
             },
             agent_route=agent_route,
-            expected_agent_route=list(self.expected_agent_route),
+            expected_agent_route=planned_agent_route,
             selected_tools=selected_tools,
-            expected_selected_tools=list(self.expected_selected_tools),
-            tool_calls=[
-                {"tool": "vlm_generate", "stage": "supervisor_agent"},
-                {"tool": "vlm_generate", "stage": "vision_agent"},
-                *retrieval_tool_calls,
-                {"tool": "vlm_generate", "stage": "reasoning_agent"},
-                {"tool": "vlm_generate", "stage": "verifier_agent"},
-                {"tool": "vlm_generate", "stage": "answer_agent"},
-            ],
+            expected_selected_tools=expected_selected_tools,
+            tool_calls=tool_calls,
             retrieved_evidence=retrieved_evidence,
             generated_claims=claims,
             claim_statuses=shared_state.claim_statuses,
             shared_state=shared_state_record,
             critic_decision=verification_status,
+            answer_gate=answer_gate,
             claim_verification_status=verification_status,
             evidence_query=evidence_query,
             memory_records=memory_records,
             memory_write_record=memory_write_record,
-            input_tokens=_sum_optional_many(
-                supervisor.input_tokens,
-                vision.input_tokens,
-                reasoning.input_tokens,
-                verifier.input_tokens if verifier is not None else None,
-                answer.input_tokens,
+            input_tokens=_sum_response_tokens(
+                [supervisor, vision, reasoning, verifier, answer],
+                "input_tokens",
             ),
-            output_tokens=_sum_optional_many(
-                supervisor.output_tokens,
-                vision.output_tokens,
-                reasoning.output_tokens,
-                verifier.output_tokens if verifier is not None else None,
-                answer.output_tokens,
+            output_tokens=_sum_response_tokens(
+                [supervisor, vision, reasoning, verifier, answer],
+                "output_tokens",
             ),
             confidence=answer.confidence,
         )
@@ -469,6 +523,8 @@ def create_multi_agent(
     backend: VLMBackend,
     retrieval_pipeline: RetrievalPipeline | None = None,
     memory_store: PersistentAgentMemoryStore | None = None,
+    dynamic_routing: bool = False,
+    deterministic_answer_gate: bool = False,
 ) -> FixedMultiAgent | SupervisorMultiAgent:
     """根据配置创建 Phase 4 agent。"""
     if mode == FixedMultiAgent.mode:
@@ -478,6 +534,8 @@ def create_multi_agent(
             backend=backend,
             retrieval_pipeline=retrieval_pipeline,
             memory_store=memory_store,
+            dynamic_routing=dynamic_routing,
+            deterministic_answer_gate=deterministic_answer_gate,
         )
     raise ValueError(f"Unsupported multi-agent mode: {mode}")
 
@@ -487,6 +545,153 @@ def _sum_optional_many(*values: int | None) -> int | None:
     if any(value is None for value in values):
         return None
     return sum(int(value) for value in values)
+
+
+def _sum_response_tokens(responses: list[object | None], attribute: str) -> int | None:
+    """只汇总实际执行过的 VLM 调用；被 Supervisor 跳过的 agent 不计入 token。"""
+    values = [
+        getattr(response, attribute)
+        for response in responses
+        if response is not None
+    ]
+    return _sum_optional_many(*values)
+
+
+def _normalize_selected_tools(
+    selected_tools: list[str],
+    fallback: list[str],
+) -> list[str]:
+    """把 Supervisor 输出规整成 canonical tool names；解析失败时走完整可靠链路。"""
+    canonical_tools = {
+        "vision agent": "Vision Agent",
+        "retrieval agent": "Retrieval Agent",
+        "reasoning agent": "Reasoning Agent",
+        "verifier agent": "Verifier Agent",
+        "answer agent": "Answer Agent",
+    }
+    normalized: list[str] = []
+    for tool in selected_tools:
+        key = " ".join(str(tool).strip().lower().split())
+        canonical = canonical_tools.get(key)
+        if canonical and canonical not in normalized:
+            normalized.append(canonical)
+    if normalized:
+        if "Answer Agent" not in normalized:
+            normalized.append("Answer Agent")
+        return normalized
+    return list(fallback)
+
+
+def _tool_selected(selected_tools: list[str], tool_name: str) -> bool:
+    """判断 Supervisor 是否选择了某个 agent/tool。"""
+    return tool_name in selected_tools
+
+
+def _planned_route_from_tools(
+    selected_tools: list[str],
+    can_retrieve: bool,
+) -> list[str]:
+    """把 Supervisor 的工具选择转换成本次应执行的 agent route。"""
+    route = ["supervisor_agent"]
+    if _tool_selected(selected_tools, "Vision Agent"):
+        route.append("vision_agent")
+    if _tool_selected(selected_tools, "Retrieval Agent") and can_retrieve:
+        route.append("retrieval_agent")
+    if _tool_selected(selected_tools, "Reasoning Agent") or (
+        _tool_selected(selected_tools, "Verifier Agent") and can_retrieve
+    ):
+        route.append("reasoning_agent")
+    if _tool_selected(selected_tools, "Verifier Agent") and can_retrieve:
+        route.append("verifier_agent")
+    route.append("answer_agent")
+    return route
+
+
+def _build_answer_gate(
+    claim_statuses: list[dict],
+    verification_status: str = "",
+    enabled: bool = True,
+) -> dict:
+    """根据结构化 claim status 生成确定性答案门控。
+
+    HYPOTHESIS 只表示候选解释，不触发硬拦截；UNSUPPORTED / CONTRADICTED 会阻止
+    Answer Agent 把对应 claim 当作最终事实输出。
+    """
+    if not enabled:
+        return {
+            "decision": "DISABLED",
+            "forced_prediction": None,
+            "blocked_claims": [],
+            "reason": "Deterministic answer gate is disabled for this experiment.",
+        }
+
+    blocked_statuses = {"UNSUPPORTED", "CONTRADICTED"}
+    blocked_claims = [
+        {
+            "claim": str(item.get("claim", "")).strip(),
+            "status": normalize_claim_status(str(item.get("status", ""))),
+            "source_agent": str(item.get("source_agent", "")),
+        }
+        for item in claim_statuses
+        if normalize_claim_status(str(item.get("status", ""))) in blocked_statuses
+        and str(item.get("claim", "")).strip()
+    ]
+    normalized_verification = verification_status.strip().upper()
+    if normalized_verification in blocked_statuses and not blocked_claims:
+        blocked_claims.append(
+            {
+                "claim": "final reasoning claim",
+                "status": normalized_verification,
+                "source_agent": "verifier_agent",
+            }
+        )
+
+    if not blocked_claims:
+        return {
+            "decision": "ALLOW",
+            "forced_prediction": None,
+            "blocked_claims": [],
+            "reason": "No UNSUPPORTED or CONTRADICTED claim was found.",
+        }
+
+    most_severe_status = (
+        "CONTRADICTED"
+        if any(item["status"] == "CONTRADICTED" for item in blocked_claims)
+        else "UNSUPPORTED"
+    )
+    return {
+        "decision": f"RESTRICT_{most_severe_status}",
+        "forced_prediction": "uncertain",
+        "blocked_claims": blocked_claims,
+        "reason": (
+            "At least one claim needed by the final answer is unsupported or "
+            "contradicted by verification."
+        ),
+    }
+
+
+def _format_answer_gate(answer_gate: dict) -> str:
+    """生成写入 shared state 的 gate 摘要。"""
+    blocked_claim_lines = [
+        f"- [{item['status']}] {item['claim']} (source={item.get('source_agent', '')})"
+        for item in answer_gate.get("blocked_claims", [])
+    ]
+    blocked_claims = "\n".join(blocked_claim_lines) or "None"
+    forced_prediction = answer_gate.get("forced_prediction") or "None"
+    return (
+        f"Answer Gate: {answer_gate.get('decision', 'ALLOW')}\n"
+        f"Blocked Claims:\n{blocked_claims}\n"
+        f"Forced Prediction: {forced_prediction}\n"
+        f"Instruction: do not assert unsupported or contradicted claims."
+    )
+
+
+def _apply_answer_gate(prediction: str, answer_gate: dict) -> str:
+    """在模型生成后执行硬门控，保证最终 prediction 不绕过 Verifier。"""
+    forced_prediction = answer_gate.get("forced_prediction")
+    if forced_prediction:
+        return str(forced_prediction)
+    return prediction
 
 
 def _has_reasoning_claim_status(shared_state: SharedAgentState) -> bool:

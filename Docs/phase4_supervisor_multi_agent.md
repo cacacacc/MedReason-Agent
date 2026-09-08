@@ -82,6 +82,69 @@ Supervisor Agent
 Supervisor 负责选择工具，Retrieval Agent 使用 Phase 3 的 RAG 检索链路，
 Verifier Agent 检查 reasoning claims 是否被 evidence 支持。
 
+## Phase 5 Reserved: Dynamic Supervisor Routing
+
+Phase 4 正式实验保持旧版完整 Supervisor 链路。Dynamic routing 已在代码中实现为可选开关，
+但本项目把它放到 Phase 5 作为新对照实验，不混入当前已经开始的 Phase 4 full。
+
+当前规则：
+
+```text
+Selected Tools 包含 Vision Agent
+-> 执行 Vision Agent
+
+Selected Tools 包含 Retrieval Agent 且 retrieval enabled
+-> 执行 Retrieval Agent
+
+Selected Tools 包含 Reasoning Agent
+-> 执行 Reasoning Agent
+
+Selected Tools 包含 Verifier Agent 且 retrieval enabled
+-> 执行 Reasoning Agent + Verifier Agent
+
+Answer Agent 永远执行
+```
+
+如果 Supervisor 输出无法解析，系统回退到完整可靠链路：
+
+```text
+Vision Agent
+-> Retrieval Agent
+-> Reasoning Agent
+-> Verifier Agent
+-> Answer Agent
+```
+
+Phase 5 配置会使用这个协议标记：
+
+```text
+structured_supervisor_agents_dynamic_gate_v2
+```
+
+## Phase 5 Reserved: Deterministic Answer Gate
+
+Deterministic answer gate 也放到 Phase 5。它在 Answer Agent 生成最终答案前读取 shared state 里的
+`claim_statuses` 和 Verifier 状态：
+
+```text
+ALLOW:
+没有 UNSUPPORTED / CONTRADICTED claim，保留模型答案。
+
+RESTRICT_UNSUPPORTED:
+存在 UNSUPPORTED claim，最终 prediction 强制改为 uncertain。
+
+RESTRICT_CONTRADICTED:
+存在 CONTRADICTED claim，最终 prediction 强制改为 uncertain。
+```
+
+这个 gate 是 deterministic post-processing，不依赖模型自觉遵守 prompt。它的目的不是提高
+exact-match accuracy，而是防止系统把 unsupported medical claim 当成最终事实输出。结果文件会写入：
+
+```text
+answer_gate
+answer_gate_counts
+```
+
 ## Memory / Shared State
 
 当前 Phase 4 加入的是 sample-level short-term memory，不是跨病例长期记忆：
@@ -277,6 +340,29 @@ Persistent Memory ablation：
 ```bash
 python scripts/run_multi_agent.py --config configs/experiments/exp04_supervisor_multi_agent_qwen_7b_4090d_pmc10k_memory_20.yaml
 python scripts/run_multi_agent.py --config configs/experiments/exp04_supervisor_multi_agent_qwen_7b_4090d_pmc10k_memory_full.yaml
+```
+
+## 当前 full 已经开始时怎么办
+
+如果旧版 Phase 4 full 已经在 AutoDL 上运行，不要中断。旧版结果就是当前 Phase 4 主结果：
+
+```text
+Supervisor Multi-Agent v1
+```
+
+跑完后只需要离线补错误归因，不重跑模型：
+
+```bash
+python scripts/backfill_error_attribution.py \
+  --predictions Results/exp04_supervisor_multi_agent_qwen_7b_4090d_pmc10k_full/predictions.jsonl \
+  --metrics Results/exp04_supervisor_multi_agent_qwen_7b_4090d_pmc10k_full/metrics.json
+```
+
+新版 dynamic routing + deterministic gate 留到 Phase 5：
+
+```bash
+python scripts/run_multi_agent.py --config configs/experiments/exp05_supervisor_multi_agent_dynamic_gate_qwen_7b_4090d_pmc10k_20.yaml
+python scripts/run_multi_agent.py --config configs/experiments/exp05_supervisor_multi_agent_dynamic_gate_qwen_7b_4090d_pmc10k_full.yaml
 ```
 
 ## Pass Criteria

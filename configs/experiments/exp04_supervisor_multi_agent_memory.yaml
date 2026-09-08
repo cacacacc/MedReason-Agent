@@ -8,6 +8,8 @@ method:
   backend: mock
   prompt_version: supervisor_multi_agent_memory_v1
   prompt_contract: structured_supervisor_agents_shared_persistent_memory_v1
+  dynamic_routing: false
+  deterministic_answer_gate: false
   agent_mode: supervisor_multi_agent
   rag_mode: supervised_retrieval_verification
   training_epochs: 0

@@ -350,7 +350,7 @@ python scripts/build_faiss_index.py \
   --chunks Data/Processed/medical_kb/pmc_10k_chunks.jsonl \
   --index-output Data/Processed/medical_kb/pmc_10k_bge_small.faiss \
   --metadata-output Data/Processed/medical_kb/pmc_10k_bge_small_metadata.jsonl \
-  --embedding-model BAAI/bge-small-en-v1.5 \
+  --embedding-model /root/autodl-tmp/models/bge-small-en-v1.5 \
   --device cuda \
   --batch-size 64
 
@@ -361,7 +361,7 @@ python scripts/run_rag.py --config configs/experiments/exp03_knowledge_evidence_
 检索设置：
 
 ```text
-Embedding: BAAI/bge-small-en-v1.5
+Embedding: /root/autodl-tmp/models/bge-small-en-v1.5
 Vector index: FAISS
 Main top-k: 5
 Ablation top-k: 3 / 5 / 10

@@ -472,7 +472,7 @@ configs/experiments/exp03_knowledge_evidence_rag_qwen_7b_4090d_pmc10k_full.yaml
 Phase 3 的向量检索主方案固定为：
 
 ```text
-Embedding: BAAI/bge-small-en-v1.5
+Embedding: /root/autodl-tmp/models/bge-small-en-v1.5
 Vector index: FAISS IndexFlatIP
 Embedding dim: 384
 Main top-k: 5
@@ -492,7 +492,7 @@ python scripts/build_faiss_index.py \
   --chunks Data/Processed/medical_kb/pmc_10k_chunks.jsonl \
   --index-output Data/Processed/medical_kb/pmc_10k_bge_small.faiss \
   --metadata-output Data/Processed/medical_kb/pmc_10k_bge_small_metadata.jsonl \
-  --embedding-model BAAI/bge-small-en-v1.5 \
+  --embedding-model /root/autodl-tmp/models/bge-small-en-v1.5 \
   --device cuda \
   --batch-size 64
 ```

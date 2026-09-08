@@ -80,7 +80,7 @@ method:
 后续如果有足够算力，可以改成：
 
 ```yaml
-model_id: Qwen/Qwen2.5-VL-7B-Instruct
+model_id: /root/autodl-tmp/models/Qwen2.5-VL-7B-Instruct
 ```
 
 但你的 CPU 环境不建议本地运行 7B。主实验如果坚持使用 7B，更现实的方式是改用云 GPU 或 API；否则本地项目主实验应统一固定为 3B。
