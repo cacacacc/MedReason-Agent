@@ -433,9 +433,11 @@ overlap: 50 tokenizer tokens
 ```text
 configs/retrieval/pmc_10k_keyword.yaml
 configs/experiments/exp03_rag_qwen_7b_4090d_pmc10k_20.yaml
+configs/experiments/exp03_rag_qwen_7b_4090d_pmc10k_full.yaml
 configs/experiments/exp03_rag_qwen_7b_4090d_pmc10k_k3_20.yaml
 configs/experiments/exp03_rag_qwen_7b_4090d_pmc10k_k10_20.yaml
 configs/experiments/exp03_knowledge_evidence_rag_qwen_7b_4090d_pmc10k_20.yaml
+configs/experiments/exp03_knowledge_evidence_rag_qwen_7b_4090d_pmc10k_full.yaml
 ```
 
 ## BGE-small + FAISS
@@ -480,6 +482,15 @@ python scripts/run_rag.py --config configs/experiments/exp03_rag_qwen_7b_4090d_p
 python scripts/run_rag.py --config configs/experiments/exp03_rag_qwen_7b_4090d_pmc10k_k3_20.yaml
 python scripts/run_rag.py --config configs/experiments/exp03_rag_qwen_7b_4090d_pmc10k_k10_20.yaml
 ```
+
+如果 20 条输出格式、显存和速度都正常，可以直接跑 full test：
+
+```bash
+python scripts/run_rag.py --config configs/experiments/exp03_rag_qwen_7b_4090d_pmc10k_full.yaml
+python scripts/run_rag.py --config configs/experiments/exp03_knowledge_evidence_rag_qwen_7b_4090d_pmc10k_full.yaml
+```
+
+当前 OSF 公共版 VQA-RAD full test 是 451 条，不是 464 条。
 
 ## Outputs
 

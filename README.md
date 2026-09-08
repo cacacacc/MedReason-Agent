@@ -328,6 +328,13 @@ Main top-k: 5
 Ablation top-k: 3 / 5 / 10
 ```
 
+20 条 smoke 稳定后，直接跑 full：
+
+```bash
+python scripts/run_rag.py --config configs/experiments/exp03_rag_qwen_7b_4090d_pmc10k_full.yaml
+python scripts/run_rag.py --config configs/experiments/exp03_knowledge_evidence_rag_qwen_7b_4090d_pmc10k_full.yaml
+```
+
 ## 接入真实 Qwen2.5-VL
 
 先按你的 CPU / CUDA 环境安装 PyTorch：
