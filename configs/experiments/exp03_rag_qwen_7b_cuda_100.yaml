@@ -37,8 +37,8 @@ retrieval:
 generation:
   temperature: 0.0
   top_p: 1.0
-  # 4090D 上先用 160，兼顾结构化输出和速度；OOM 时降到 96/128。
-  max_new_tokens: 160
+  # Phase 3 结构化输出统一使用 256；OOM 时再临时降到 160/128 做排错。
+  max_new_tokens: 256
 
 outputs:
   result_dir: Results/exp03_rag_qwen_7b_cuda_100

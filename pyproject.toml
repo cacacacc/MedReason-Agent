@@ -29,6 +29,7 @@ agent = [
   "langchain-core>=0.2"
 ]
 rag = [
+  "faiss-cpu>=1.8",
   "sentence-transformers>=3.0",
   "qdrant-client>=1.9"
 ]

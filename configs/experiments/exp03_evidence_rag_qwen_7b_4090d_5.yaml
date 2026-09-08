@@ -35,11 +35,10 @@ retrieval:
 generation:
   temperature: 0.0
   top_p: 1.0
-  # Verifier 路径有两次生成，先用 128；稳定后再尝试 160。
-  max_new_tokens: 128
+  # Phase 3 结构化 verifier 输出统一使用 256。
+  max_new_tokens: 256
 
 outputs:
   result_dir: Results/exp03_evidence_rag_qwen_7b_4090d_5
   prediction_file: predictions.jsonl
   metrics_file: metrics.json
-

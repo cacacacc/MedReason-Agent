@@ -63,12 +63,21 @@ SEED_DOCUMENTS = [
 ]
 
 
-def load_documents_from_jsonl(path: Path) -> list[KnowledgeDocument]:
+def load_documents_from_jsonl(
+    path: Path,
+    max_documents: int | None = None,
+) -> list[KnowledgeDocument]:
     """从真实医学摘要 JSONL 读取文档。
 
     每行可以包含 `doc_id`/`pmid`、`title`、`abstract`/`text`、`source` 字段。
-    这样脚本能适配不同 PubMed 导出格式。
+    这样脚本能适配不同 PubMed / PubMed Central 导出格式。
+
+    `max_documents` 用于控制第一版知识库规模，例如只取 10,000 篇有效摘要。
+    这里按“有效摘要”计数：没有正文的记录不会占用 quota。
     """
+    if max_documents is not None and max_documents <= 0:
+        raise ValueError("max_documents must be positive when provided.")
+
     documents: list[KnowledgeDocument] = []
     with path.open("r", encoding="utf-8") as file:
         for index, line in enumerate(file):
@@ -88,6 +97,8 @@ def load_documents_from_jsonl(path: Path) -> list[KnowledgeDocument]:
                         source=source,
                     )
                 )
+                if max_documents is not None and len(documents) >= max_documents:
+                    break
     return documents
 
 
@@ -96,14 +107,44 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="构建 Phase 3 RAG 医学知识库。")
     parser.add_argument("--input-jsonl", type=Path, default=None)
     parser.add_argument("--seed-medical-vqa", action="store_true")
+    parser.add_argument("--corpus-name", default="seed_medical_vqa")
+    parser.add_argument("--max-documents", type=int, default=None)
+    parser.add_argument(
+        "--chunk-unit",
+        choices=["word", "tokenizer"],
+        default="word",
+        help="word 使用空格词切分；tokenizer 使用 Hugging Face tokenizer 切分。",
+    )
+    parser.add_argument(
+        "--tokenizer-name-or-path",
+        default="Qwen/Qwen2.5-VL-7B-Instruct",
+        help="chunk-unit=tokenizer 时使用的 tokenizer 名称或本地路径。",
+    )
     parser.add_argument(
         "--output",
         type=Path,
         default=Path("Data/Processed/medical_kb/seed_chunks.jsonl"),
     )
-    parser.add_argument("--chunk-size", type=int, default=120)
-    parser.add_argument("--overlap", type=int, default=20)
+    parser.add_argument("--chunk-size", type=int, default=256)
+    parser.add_argument("--overlap", type=int, default=50)
     return parser.parse_args()
+
+
+def load_tokenizer(name_or_path: str):
+    """加载 Hugging Face tokenizer。
+
+    放在函数内部懒加载，避免只跑 seed smoke 或单元测试时强制依赖 transformers。
+    AutoDL 上如果已经上传 Qwen，本参数可以直接传本地模型目录。
+    """
+    try:
+        from transformers import AutoTokenizer
+    except ImportError as exc:
+        raise RuntimeError(
+            "Tokenizer chunking requires transformers. Install with: "
+            "pip install -r requirements/vlm.txt"
+        ) from exc
+
+    return AutoTokenizer.from_pretrained(name_or_path, trust_remote_code=True)
 
 
 def main() -> int:
@@ -111,11 +152,24 @@ def main() -> int:
     if args.seed_medical_vqa:
         documents = SEED_DOCUMENTS
     elif args.input_jsonl is not None:
-        documents = load_documents_from_jsonl(resolve_project_path(args.input_jsonl))
+        documents = load_documents_from_jsonl(
+            resolve_project_path(args.input_jsonl),
+            max_documents=args.max_documents,
+        )
     else:
         raise ValueError("Use --seed-medical-vqa or provide --input-jsonl.")
 
-    chunks = chunk_documents(documents, chunk_size=args.chunk_size, overlap=args.overlap)
+    tokenizer = (
+        load_tokenizer(args.tokenizer_name_or_path)
+        if args.chunk_unit == "tokenizer"
+        else None
+    )
+    chunks = chunk_documents(
+        documents,
+        chunk_size=args.chunk_size,
+        overlap=args.overlap,
+        tokenizer=tokenizer,
+    )
     output_path = resolve_project_path(args.output)
     write_chunks(output_path, chunks)
 
@@ -125,6 +179,14 @@ def main() -> int:
                 "num_documents": len(documents),
                 "num_chunks": len(chunks),
                 "output": str(output_path.relative_to(resolve_project_path("."))),
+                "corpus_name": args.corpus_name,
+                "max_documents": args.max_documents,
+                "chunk_unit": args.chunk_unit,
+                "tokenizer_name_or_path": (
+                    args.tokenizer_name_or_path if args.chunk_unit == "tokenizer" else None
+                ),
+                "chunk_size": args.chunk_size,
+                "overlap": args.overlap,
                 "is_seed_kb": bool(args.seed_medical_vqa),
             },
             indent=2,

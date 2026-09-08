@@ -337,6 +337,131 @@ DELETE
 
 这还不是最终 PubMed/BGE/Qdrant RAG 系统。
 
+## Knowledge Corpus：PubMed Central / PubMed 10k
+
+Phase 3 的 VQA benchmark 仍然是 VQA-RAD。PubMed Central / PubMed 摘要在这里不是
+问答数据集，而是 RAG 使用的外部医学知识库。
+
+第一版知识库规模固定为：
+
+```text
+10,000 篇医学摘要
+```
+
+这个规模目前合适，不需要现在增减。原因是：
+
+- 全量 corpus 会显著增加下载、清洗、索引和调试成本。
+- Phase 3 当前重点是验证 RAG agent 路径，而不是证明最大规模检索系统。
+- 10,000 篇摘要已经足够暴露 retrieval quality、irrelevant evidence 和 verifier failure。
+- 小规模 corpus 更适合 4090D 上快速迭代。
+
+后续扩展策略：
+
+```text
+第一版主实验：10,000 abstracts
+如果 evidence empty rate 高或 question coverage 低：扩到 30,000-50,000
+如果 10k 已经能稳定区分方法优劣：先不要扩，优先做 k=3/5/10 和 verifier ablation
+```
+
+当前脚本支持从 JSONL 构建 10k 摘要知识库：
+
+```bash
+python scripts/build_medical_kb.py \
+  --input-jsonl Data/Raw/pmc/pmc_abstracts.jsonl \
+  --output Data/Processed/medical_kb/pmc_10k_chunks.jsonl \
+  --corpus-name pmc_abstracts_10k \
+  --max-documents 10000 \
+  --chunk-unit tokenizer \
+  --tokenizer-name-or-path /root/autodl-tmp/models/Qwen2.5-VL-7B-Instruct \
+  --chunk-size 256 \
+  --overlap 50
+```
+
+输入 JSONL 每行建议包含：
+
+```json
+{
+  "pmid": "123456",
+  "title": "Radiology example title",
+  "abstract": "Medical abstract text...",
+  "source": "pubmed_or_pmc"
+}
+```
+
+也可以使用：
+
+```json
+{
+  "doc_id": "PMC123456",
+  "title": "...",
+  "text": "...",
+  "source": "pmc"
+}
+```
+
+`--max-documents 10000` 按有效摘要计数：没有 `abstract` / `text` 正文的记录会被跳过，
+不会占用 10,000 的 quota。
+
+当前 PMC 10k 主实验 chunk 策略是 tokenizer-level：
+
+```text
+chunk_size: 256 tokenizer tokens
+overlap: 50 tokenizer tokens
+```
+
+对应配置文件：
+
+```text
+configs/retrieval/pmc_10k_keyword.yaml
+configs/experiments/exp03_rag_qwen_7b_4090d_pmc10k_20.yaml
+configs/experiments/exp03_rag_qwen_7b_4090d_pmc10k_k3_20.yaml
+configs/experiments/exp03_rag_qwen_7b_4090d_pmc10k_k10_20.yaml
+configs/experiments/exp03_knowledge_evidence_rag_qwen_7b_4090d_pmc10k_20.yaml
+```
+
+## BGE-small + FAISS
+
+Phase 3 的向量检索主方案固定为：
+
+```text
+Embedding: BAAI/bge-small-en-v1.5
+Vector index: FAISS IndexFlatIP
+Embedding dim: 384
+Main top-k: 5
+Ablation top-k: 3 / 5 / 10
+```
+
+选择 BGE-small 的原因：
+
+- 10k 摘要规模下速度和质量比较平衡。
+- 384 维索引小，适合 AutoDL 单机。
+- 不引入医学专用 embedding 的额外变量，便于和 Keyword RAG 做 controlled comparison。
+
+先构建 tokenizer-level chunks，再构建 FAISS index：
+
+```bash
+python scripts/build_faiss_index.py \
+  --chunks Data/Processed/medical_kb/pmc_10k_chunks.jsonl \
+  --index-output Data/Processed/medical_kb/pmc_10k_bge_small.faiss \
+  --metadata-output Data/Processed/medical_kb/pmc_10k_bge_small_metadata.jsonl \
+  --embedding-model BAAI/bge-small-en-v1.5 \
+  --device cuda \
+  --batch-size 64
+```
+
+主实验先跑 k=5：
+
+```bash
+python scripts/run_rag.py --config configs/experiments/exp03_rag_qwen_7b_4090d_pmc10k_20.yaml
+```
+
+再跑 k ablation：
+
+```bash
+python scripts/run_rag.py --config configs/experiments/exp03_rag_qwen_7b_4090d_pmc10k_k3_20.yaml
+python scripts/run_rag.py --config configs/experiments/exp03_rag_qwen_7b_4090d_pmc10k_k10_20.yaml
+```
+
 ## Outputs
 
 RAG prediction record 现在会额外包含：
@@ -454,18 +579,33 @@ device_map: auto
 candidate_top_k: 6
 top_k: 2
 max_chars_per_evidence: 450
-max_new_tokens: 128
+  max_new_tokens: 256
 ```
 
-Knowledge-only RAG 可以使用 `max_chars_per_evidence: 500` 和 `max_new_tokens: 160`。
-Evidence-only / Knowledge+Evidence verifier 因为每条样本有两次 VLM 调用，建议先用
-`max_chars_per_evidence: 450` 和 `max_new_tokens: 128`。
+Knowledge-only RAG、Evidence-only RAG 和 Knowledge+Evidence verifier 的
+`max_new_tokens` 统一使用 256。Evidence-only / Knowledge+Evidence verifier 因为每条
+样本有两次 VLM 调用，如果 4090D 出现 OOM，可以临时把 `max_chars_per_evidence` 从 450
+降到 350，或把 `top_k` 从 2 降到 1。
 
 如果已经把模型上传到 AutoDL，建议把 Qwen 配置里的 `model_id` 从 Hugging Face 名称
 改成本地路径：
 
 ```yaml
 model_id: /root/autodl-tmp/models/Qwen2.5-VL-7B-Instruct
+```
+
+构建 tokenizer-level chunk 时也建议使用同一个本地路径：
+
+```bash
+python scripts/build_medical_kb.py \
+  --input-jsonl Data/Raw/pmc/pmc_abstracts.jsonl \
+  --output Data/Processed/medical_kb/pmc_10k_chunks.jsonl \
+  --corpus-name pmc_abstracts_10k \
+  --max-documents 10000 \
+  --chunk-unit tokenizer \
+  --tokenizer-name-or-path /root/autodl-tmp/models/Qwen2.5-VL-7B-Instruct \
+  --chunk-size 256 \
+  --overlap 50
 ```
 
 ## Pass Criteria

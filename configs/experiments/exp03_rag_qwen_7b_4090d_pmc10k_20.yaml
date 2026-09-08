@@ -1,5 +1,5 @@
-experiment_id: exp03_rag_qwen_7b_cuda_5
-name: Medical RAG Baseline - Qwen 2.5 VL 7B 4090D 5 Samples
+experiment_id: exp03_rag_qwen_7b_4090d_pmc10k_20
+name: Medical Knowledge RAG - Qwen 2.5 VL 7B 4090D PMC 10k 20 Samples
 phase: 3
 inherits: configs/base.yaml
 
@@ -9,7 +9,6 @@ method:
   # AutoDL 上传模型后，建议改成本地路径：
   # /root/autodl-tmp/models/Qwen2.5-VL-7B-Instruct
   model_id: Qwen/Qwen2.5-VL-7B-Instruct
-  # 4090D 是 24GB 显存，Qwen2.5-VL-7B 推理使用 bfloat16 更稳。
   torch_dtype: bfloat16
   device_map: auto
   prompt_version: rag_v3
@@ -21,26 +20,27 @@ dataset:
   name: VQA-RAD
   split: test
   scale: smoke
-  max_samples: 5
+  max_samples: 20
 
 retrieval:
-  retriever: keyword
+  retriever: faiss
+  embedding_model: BAAI/bge-small-en-v1.5
+  index_path: Data/Processed/medical_kb/pmc_10k_bge_small.faiss
+  metadata_path: Data/Processed/medical_kb/pmc_10k_bge_small_metadata.jsonl
   reranker: keyword_reranker
-  corpus_path: Data/Processed/medical_kb/seed_chunks.jsonl
-  # 先多召回少量候选，再由 reranker/filter 决定最终 evidence。
-  candidate_top_k: 6
-  # 4090D 可以放 2 条 evidence；先不要开到 3-5，避免 RAG prompt 过长。
-  top_k: 2
+  corpus_name: pmc_abstracts_10k
+  corpus_path: Data/Processed/medical_kb/pmc_10k_chunks.jsonl
+  candidate_top_k: 10
+  top_k: 5
   min_rerank_score: 0.0
-  max_chars_per_evidence: 500
+  max_chars_per_evidence: 550
 
 generation:
   temperature: 0.0
   top_p: 1.0
-  # Phase 3 结构化输出统一使用 256；OOM 时再临时降到 160/128 做排错。
   max_new_tokens: 256
 
 outputs:
-  result_dir: Results/exp03_rag_qwen_7b_cuda_5
+  result_dir: Results/exp03_rag_qwen_7b_4090d_pmc10k_20
   prediction_file: predictions.jsonl
   metrics_file: metrics.json

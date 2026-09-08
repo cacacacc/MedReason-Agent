@@ -1,4 +1,8 @@
-from medreason_agent.retrieval.chunking import KnowledgeDocument, chunk_document
+from medreason_agent.retrieval.chunking import (
+    KnowledgeDocument,
+    chunk_document,
+    chunk_document_by_tokens,
+)
 from medreason_agent.retrieval.keyword import KeywordRetriever
 from medreason_agent.retrieval.rerank import KeywordReranker, filter_evidence
 
@@ -13,6 +17,33 @@ def test_chunk_document_creates_overlapping_chunks() -> None:
     chunks = chunk_document(document, chunk_size=4, overlap=2)
 
     assert [chunk.text for chunk in chunks] == ["one two three four", "three four five six"]
+
+
+class FakeTokenizer:
+    """测试用 tokenizer，避免单元测试依赖真实 Hugging Face 模型。"""
+
+    def encode(self, text: str, add_special_tokens: bool = False) -> list[int]:
+        return [int(token) for token in text.split()]
+
+    def decode(self, token_ids: list[int], skip_special_tokens: bool = True) -> str:
+        return " ".join(str(token_id) for token_id in token_ids)
+
+
+def test_chunk_document_by_tokens_creates_overlapping_chunks() -> None:
+    document = KnowledgeDocument(
+        doc_id="doc1",
+        title="Test",
+        text="1 2 3 4 5 6",
+    )
+
+    chunks = chunk_document_by_tokens(
+        document,
+        tokenizer=FakeTokenizer(),
+        chunk_size=4,
+        overlap=2,
+    )
+
+    assert [chunk.text for chunk in chunks] == ["1 2 3 4", "3 4 5 6"]
 
 
 def test_keyword_retriever_returns_relevant_chunk_first() -> None:

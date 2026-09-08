@@ -267,7 +267,56 @@ device_map: auto
 top_k: 2
 candidate_top_k: 6
 max_chars_per_evidence: 450-500
-max_new_tokens: 128-160
+max_new_tokens: 256
+```
+
+## 构建 PubMed / PMC 10k 知识库
+
+Phase 3 的第一版真实 RAG corpus 使用 10,000 篇医学摘要，不要直接上全量。
+这个规模适合作为第一版主实验：足够测试 retrieval quality，又不会让 AutoDL 调试成本
+过高。
+先准备 JSONL：
+
+```text
+Data/Raw/pmc/pmc_abstracts.jsonl
+```
+
+每行至少包含 `title` 和 `abstract` 或 `text`。然后构建 chunks：
+
+```bash
+python scripts/build_medical_kb.py \
+  --input-jsonl Data/Raw/pmc/pmc_abstracts.jsonl \
+  --output Data/Processed/medical_kb/pmc_10k_chunks.jsonl \
+  --corpus-name pmc_abstracts_10k \
+  --max-documents 10000 \
+  --chunk-unit tokenizer \
+  --tokenizer-name-or-path /root/autodl-tmp/models/Qwen2.5-VL-7B-Instruct \
+  --chunk-size 256 \
+  --overlap 50
+```
+
+4090D 上先跑 20 条：
+
+```bash
+python scripts/build_faiss_index.py \
+  --chunks Data/Processed/medical_kb/pmc_10k_chunks.jsonl \
+  --index-output Data/Processed/medical_kb/pmc_10k_bge_small.faiss \
+  --metadata-output Data/Processed/medical_kb/pmc_10k_bge_small_metadata.jsonl \
+  --embedding-model BAAI/bge-small-en-v1.5 \
+  --device cuda \
+  --batch-size 64
+
+python scripts/run_rag.py --config configs/experiments/exp03_rag_qwen_7b_4090d_pmc10k_20.yaml
+python scripts/run_rag.py --config configs/experiments/exp03_knowledge_evidence_rag_qwen_7b_4090d_pmc10k_20.yaml
+```
+
+检索设置：
+
+```text
+Embedding: BAAI/bge-small-en-v1.5
+Vector index: FAISS
+Main top-k: 5
+Ablation top-k: 3 / 5 / 10
 ```
 
 ## 接入真实 Qwen2.5-VL

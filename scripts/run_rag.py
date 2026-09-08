@@ -37,6 +37,7 @@ from medreason_agent.experiments.resume import (
 )
 from medreason_agent.models.vlm import create_vlm_backend
 from medreason_agent.paths import resolve_project_path
+from medreason_agent.retrieval.faiss_retriever import FAISSRetriever
 from medreason_agent.retrieval.keyword import KeywordRetriever, load_chunks
 from medreason_agent.retrieval.rerank import KeywordReranker
 
@@ -174,9 +175,20 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
             "Run scripts/build_medical_kb.py before running Phase 3."
         )
 
-    # 当前先使用轻量 keyword retriever 跑通 agent 行为。后续替换 BGE/Qdrant 时，
-    # 只要保持 retriever 接口一致，Knowledge/Evidence 两类 agent 不需要重写。
-    retriever = KeywordRetriever(load_chunks(corpus_path))
+    retriever_name = str(retrieval_config.get("retriever", "keyword"))
+    if retriever_name == "keyword":
+        retriever = KeywordRetriever(load_chunks(corpus_path))
+    elif retriever_name == "faiss":
+        retriever = FAISSRetriever(
+            index_path=resolve_project_path(retrieval_config["index_path"]),
+            metadata_path=resolve_project_path(retrieval_config["metadata_path"]),
+            embedding_model=str(
+                retrieval_config.get("embedding_model", "BAAI/bge-small-en-v1.5")
+            ),
+            device=retrieval_config.get("embedding_device"),
+        )
+    else:
+        raise ValueError(f"Unsupported retriever: {retriever_name}")
     reranker = KeywordReranker()
     backend = create_vlm_backend(
         backend=backend_name or method.get("backend", "mock"),
@@ -271,11 +283,15 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
             "prompt_version": method["prompt_version"],
             "prompt_contract": method["prompt_contract"],
             "rag_mode": method["rag_mode"],
-            "retriever": retrieval_config.get("retriever", "keyword"),
+            "retriever": retriever_name,
             "reranker": retrieval_config.get("reranker", "keyword_reranker"),
+            "embedding_model": retrieval_config.get("embedding_model"),
+            "index_path": retrieval_config.get("index_path"),
+            "metadata_path": retrieval_config.get("metadata_path"),
             "top_k": top_k,
             "candidate_top_k": candidate_top_k,
             "min_rerank_score": min_rerank_score,
+            "corpus_name": retrieval_config.get("corpus_name", "seed_medical_vqa"),
             "corpus_path": str(corpus_path.relative_to(resolve_project_path("."))),
             "is_valid_main_result": backend.backend_name != "mock",
             "prediction_file": str(prediction_path.relative_to(resolve_project_path("."))),

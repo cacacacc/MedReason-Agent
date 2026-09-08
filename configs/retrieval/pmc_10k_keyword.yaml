@@ -1,0 +1,24 @@
+corpus:
+  name: pmc_abstracts_10k
+  source_type: pubmed_or_pmc_abstract_jsonl
+  input_jsonl: Data/Raw/pmc/pmc_abstracts.jsonl
+  output_chunks: Data/Processed/medical_kb/pmc_10k_chunks.jsonl
+  max_documents: 10000
+
+chunking:
+  chunk_unit: tokenizer
+  tokenizer_name_or_path: Qwen/Qwen2.5-VL-7B-Instruct
+  # Phase 3 主实验使用 tokenizer-level chunk，更接近模型真实上下文长度。
+  chunk_size: 256
+  overlap: 50
+
+retrieval:
+  retriever: faiss
+  embedding_model: BAAI/bge-small-en-v1.5
+  index_path: Data/Processed/medical_kb/pmc_10k_bge_small.faiss
+  metadata_path: Data/Processed/medical_kb/pmc_10k_bge_small_metadata.jsonl
+  reranker: keyword_reranker
+  candidate_top_k: 8
+  top_k: 5
+  min_rerank_score: 0.0
+  max_chars_per_evidence: 550
