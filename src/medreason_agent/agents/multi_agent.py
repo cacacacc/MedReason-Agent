@@ -129,7 +129,7 @@ class FixedMultiAgent:
             claim_statuses=critic_claim_statuses,
         )
 
-        answer_gate = _build_answer_gate(shared_state.claim_statuses)
+        answer_gate = _build_answer_gate(shared_state.claim_statuses, enabled=False)
         shared_state.add_agent_output("answer_gate", _format_answer_gate(answer_gate))
 
         answer = self._generate(
@@ -254,12 +254,14 @@ class SupervisorMultiAgent:
         memory_store: PersistentAgentMemoryStore | None = None,
         dynamic_routing: bool = False,
         deterministic_answer_gate: bool = False,
+        internal_verifier: bool = True,
     ) -> None:
         self.backend = backend
         self.retrieval_pipeline = retrieval_pipeline
         self.memory_store = memory_store
         self.dynamic_routing = dynamic_routing
         self.deterministic_answer_gate = deterministic_answer_gate
+        self.internal_verifier = internal_verifier
 
     def run(
         self,
@@ -290,7 +292,11 @@ class SupervisorMultiAgent:
             should_run_retrieval = (
                 _tool_selected(selected_tools, "Retrieval Agent") and can_retrieve
             )
-            should_run_verifier = _tool_selected(selected_tools, "Verifier Agent") and can_retrieve
+            should_run_verifier = (
+                _tool_selected(selected_tools, "Verifier Agent")
+                and can_retrieve
+                and self.internal_verifier
+            )
             should_run_reasoning = (
                 _tool_selected(selected_tools, "Reasoning Agent") or should_run_verifier
             )
@@ -303,8 +309,11 @@ class SupervisorMultiAgent:
             should_run_vision = True
             should_run_retrieval = can_retrieve
             should_run_reasoning = True
-            should_run_verifier = can_retrieve
-            planned_agent_route = list(self.expected_agent_route)
+            should_run_verifier = can_retrieve and self.internal_verifier
+            planned_agent_route = _fixed_supervisor_route(
+                can_retrieve=can_retrieve,
+                internal_verifier=self.internal_verifier,
+            )
             expected_selected_tools = list(self.expected_selected_tools)
 
         vision = None
@@ -525,6 +534,7 @@ def create_multi_agent(
     memory_store: PersistentAgentMemoryStore | None = None,
     dynamic_routing: bool = False,
     deterministic_answer_gate: bool = False,
+    internal_verifier: bool = True,
 ) -> FixedMultiAgent | SupervisorMultiAgent:
     """根据配置创建 Phase 4 agent。"""
     if mode == FixedMultiAgent.mode:
@@ -536,6 +546,7 @@ def create_multi_agent(
             memory_store=memory_store,
             dynamic_routing=dynamic_routing,
             deterministic_answer_gate=deterministic_answer_gate,
+            internal_verifier=internal_verifier,
         )
     raise ValueError(f"Unsupported multi-agent mode: {mode}")
 
@@ -602,6 +613,21 @@ def _planned_route_from_tools(
     ):
         route.append("reasoning_agent")
     if _tool_selected(selected_tools, "Verifier Agent") and can_retrieve:
+        route.append("verifier_agent")
+    route.append("answer_agent")
+    return route
+
+
+def _fixed_supervisor_route(
+    can_retrieve: bool,
+    internal_verifier: bool,
+) -> list[str]:
+    """生成非动态路由下的 Supervisor 固定执行链路。"""
+    route = ["supervisor_agent", "vision_agent"]
+    if can_retrieve:
+        route.append("retrieval_agent")
+    route.append("reasoning_agent")
+    if can_retrieve and internal_verifier:
         route.append("verifier_agent")
     route.append("answer_agent")
     return route

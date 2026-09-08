@@ -6,8 +6,6 @@ inherits: configs/base.yaml
 method:
   type: multi_agent
   backend: qwen2_5_vl
-  # AutoDL 上传模型后，建议改成本地路径：
-  # /root/autodl-tmp/models/Qwen2.5-VL-7B-Instruct
   model_id: /root/autodl-tmp/models/Qwen2.5-VL-7B-Instruct
   torch_dtype: bfloat16
   device_map: auto
