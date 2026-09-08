@@ -208,6 +208,7 @@ Tool Selection Accuracy
 Evidence Quality Score
 Mean State Compression Ratio
 Mean Persistent Memory Hits
+Error Attribution
 Latency
 Input / output tokens
 ```
@@ -220,6 +221,8 @@ Input / output tokens
 - `Mean State Compression Ratio`：压缩后 agent memory 字符数 / 原始 agent
   输出字符数，越低表示共享状态越短。
 - `Mean Persistent Memory Hits`：平均每个样本检索到多少条历史 memory。
+- `Error Attribution`：错误样本自动归因到 Perception / Retrieval /
+  Reasoning / Verification / Routing / State 六类。
 - `Reasoning Score`：检查 Vision / Reasoning / Claims / Final Answer 结构是否完整。
 - `Tool Selection Accuracy`：比较 Supervisor 输出的 `Selected Tools` 和
   `expected_selected_tools` 是否一致。

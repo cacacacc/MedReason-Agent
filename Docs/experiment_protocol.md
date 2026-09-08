@@ -122,7 +122,8 @@ Experiment 10: Optional LoRA
   "input_tokens": null,
   "output_tokens": null,
   "correct": null,
-  "error_type": ""
+  "error_type": "",
+  "error_attribution": {}
 }
 ```
 
@@ -194,6 +195,22 @@ memory:
 不把 prediction 写入 memory_text
 只保存 question metadata、claim_statuses、evidence titles 和压缩经验
 ```
+
+## Error Attribution 协议
+
+错误样本必须写入 `error_type` 和 `error_attribution`。当前六类：
+
+```text
+Perception Error: 图像看错
+Retrieval Error: 证据检索错
+Reasoning Error: 推理链错误
+Verification Error: Verifier 判断错误
+Routing Error: Supervisor 选错策略
+State Error: Agent 间信息传递错误
+```
+
+`error_type` 保存主归因，`error_attribution.candidate_error_types` 保存所有触发的候选
+归因。自动归因只是筛查工具，`requires_human_review=true` 的样本需要人工复核。
 
 ## 报告要求
 

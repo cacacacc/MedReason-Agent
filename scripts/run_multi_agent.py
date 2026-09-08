@@ -21,6 +21,10 @@ from medreason_agent.data.vqa_rad import VQARADSample, load_vqa_rad_split
 from medreason_agent.evaluation.agent_metrics import summarize_agent_metrics
 from medreason_agent.evaluation.answer_metrics import exact_match, summarize_answer_metrics
 from medreason_agent.evaluation.claim_status import summarize_claim_statuses
+from medreason_agent.evaluation.error_attribution import (
+    attribute_error,
+    summarize_error_attribution,
+)
 from medreason_agent.evaluation.evidence_metrics import (
     score_evidence_quality,
     summarize_evidence_quality,
@@ -110,7 +114,7 @@ def build_prediction_record(
         ground_truth=sample.answer,
         evidence_records=result.retrieved_evidence,
     )
-    return {
+    record = {
         "experiment_id": metadata["experiment_id"],
         "model": metadata["model"],
         "backend": metadata["backend"],
@@ -154,8 +158,12 @@ def build_prediction_record(
         "input_tokens": result.input_tokens,
         "output_tokens": result.output_tokens,
         "correct": correct,
-        "error_type": "" if correct else "UNKNOWN",
+        "error_type": "",
     }
+    error_attribution = attribute_error(record)
+    record["error_attribution"] = error_attribution
+    record["error_type"] = error_attribution["primary_error_type"]
+    return record
 
 
 def write_jsonl(path: Path, records: list[dict[str, Any]]) -> None:
@@ -181,6 +189,7 @@ def is_current_record(record: dict[str, Any], method: dict[str, Any]) -> bool:
         and "state_compression" in record
         and "memory_records" in record
         and "memory_write_record" in record
+        and "error_attribution" in record
     )
 
 
@@ -261,6 +270,7 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
     metrics.update(summarize_evidence_quality(records))
     metrics.update(summarize_claim_statuses(records))
     metrics.update(summarize_agent_metrics(records))
+    metrics.update(summarize_error_attribution(records))
     metrics.update(
         {
             "experiment_id": config["experiment_id"],

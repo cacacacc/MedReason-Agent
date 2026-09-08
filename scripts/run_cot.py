@@ -18,6 +18,10 @@ from tqdm import tqdm
 
 from medreason_agent.data.vqa_rad import VQARADSample, load_vqa_rad_split
 from medreason_agent.evaluation.answer_metrics import exact_match, summarize_answer_metrics
+from medreason_agent.evaluation.error_attribution import (
+    attribute_error,
+    summarize_error_attribution,
+)
 from medreason_agent.experiments.resume import (
     append_jsonl_record,
     load_records_by_sample_id,
@@ -46,7 +50,7 @@ def build_prediction_record(
     方便后续检查 CoT 到底帮助了还是伤害了结果。
     """
     correct = exact_match(prediction, sample.answer)
-    return {
+    record = {
         "experiment_id": metadata["experiment_id"],
         "model": metadata["model"],
         "backend": metadata["backend"],
@@ -73,8 +77,12 @@ def build_prediction_record(
         "input_tokens": metadata.get("input_tokens"),
         "output_tokens": metadata.get("output_tokens"),
         "correct": correct,
-        "error_type": "" if correct else "UNKNOWN",
+        "error_type": "",
     }
+    error_attribution = attribute_error(record)
+    record["error_attribution"] = error_attribution
+    record["error_type"] = error_attribution["primary_error_type"]
+    return record
 
 
 def write_jsonl(path: Path, records: list[dict[str, Any]]) -> None:
@@ -83,6 +91,14 @@ def write_jsonl(path: Path, records: list[dict[str, Any]]) -> None:
     with path.open("w", encoding="utf-8") as file:
         for record in records:
             file.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+def is_current_record(record: dict[str, Any], method: dict[str, Any]) -> bool:
+    """判断已有 CoT record 是否符合当前输出协议。"""
+    return (
+        record.get("prompt_version") == method["prompt_version"]
+        and "error_attribution" in record
+    )
 
 
 def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
@@ -114,7 +130,11 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
     # 断点续跑：已经写入 predictions.jsonl 的 sample_id 会被跳过。
     # 新结果每条即时追加，避免长时间 CoT 推理中断后丢失进度。
     sample_ids = [sample.sample_id for sample in samples]
-    records_by_sample_id = load_records_by_sample_id(prediction_path)
+    records_by_sample_id = {
+        sample_id: record
+        for sample_id, record in load_records_by_sample_id(prediction_path).items()
+        if is_current_record(record, method)
+    }
     missing_samples = [sample for sample in samples if sample.sample_id not in records_by_sample_id]
     print(
         f"RESUME existing={len(samples) - len(missing_samples)} "
@@ -162,6 +182,7 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
     records = ordered_records_for_sample_ids(records_by_sample_id, sample_ids)
     write_jsonl(prediction_path, records)
     metrics = summarize_answer_metrics(records)
+    metrics.update(summarize_error_attribution(records))
     metrics.update(
         {
             "experiment_id": config["experiment_id"],

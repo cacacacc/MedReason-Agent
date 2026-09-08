@@ -27,6 +27,10 @@ from medreason_agent.agents.rag_agents import (
 from medreason_agent.data.vqa_rad import VQARADSample, load_vqa_rad_split
 from medreason_agent.evaluation.answer_metrics import exact_match, summarize_answer_metrics
 from medreason_agent.evaluation.claim_status import summarize_claim_statuses
+from medreason_agent.evaluation.error_attribution import (
+    attribute_error,
+    summarize_error_attribution,
+)
 from medreason_agent.evaluation.evidence_metrics import (
     score_evidence_quality,
     summarize_evidence_quality,
@@ -63,7 +67,7 @@ def build_prediction_record(
         ground_truth=sample.answer,
         evidence_records=agent_result.retrieved_evidence,
     )
-    return {
+    record = {
         "experiment_id": metadata["experiment_id"],
         "model": metadata["model"],
         "backend": metadata["backend"],
@@ -104,8 +108,12 @@ def build_prediction_record(
         "input_tokens": agent_result.input_tokens,
         "output_tokens": agent_result.output_tokens,
         "correct": correct,
-        "error_type": "" if correct else "UNKNOWN",
+        "error_type": "",
     }
+    error_attribution = attribute_error(record)
+    record["error_attribution"] = error_attribution
+    record["error_type"] = error_attribution["primary_error_type"]
+    return record
 
 
 def write_jsonl(path: Path, records: list[dict[str, Any]]) -> None:
@@ -148,6 +156,7 @@ def is_current_rag_record(
         "claim_statuses",
         "claim_verification_status",
         "evidence_quality_score",
+        "error_attribution",
     }
     if any(field not in record for field in required_fields):
         return False
@@ -277,6 +286,7 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
     metrics.update(summarize_evidence_quality(records))
     metrics.update(summarize_claim_statuses(records))
     metrics.update(summarize_verification_status(records))
+    metrics.update(summarize_error_attribution(records))
     metrics.update(
         {
             "experiment_id": config["experiment_id"],

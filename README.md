@@ -263,6 +263,8 @@ mean_state_compression_ratio
 memory_records
 memory_write_record
 mean_persistent_memory_hits
+error_attribution
+error_type_counts
 ```
 
 当前压缩方法是 `section_extract_v1`，只保留关键段落、retrieved evidence 摘要和

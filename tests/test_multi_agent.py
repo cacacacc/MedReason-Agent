@@ -153,6 +153,11 @@ def test_summarize_agent_metrics() -> None:
                 "claim_statuses": [{"claim": "yes", "status": "HYPOTHESIS"}],
                 "state_compression": {"compression_ratio": 0.5},
                 "memory_records": [{"memory_id": "m1"}],
+                "error_attribution": {
+                    "primary_error_type": "",
+                    "candidate_error_types": [],
+                    "requires_human_review": False,
+                },
             }
         ]
     )

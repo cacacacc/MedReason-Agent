@@ -79,3 +79,4 @@ logging:
     - output_tokens
     - correct
     - error_type
+    - error_attribution

@@ -2,7 +2,54 @@
 
 这是 MedReason-Agent 的第一版错误分类。它不是最终版本，后续会根据真实实验错误样本继续修改。
 
-## 错误类型
+## 当前自动归因标签
+
+Phase 3 / Phase 4 当前使用下面六类 `Error Type`，写入 prediction record 的
+`error_type` 和 `error_attribution` 字段：
+
+| Error Type | 含义 |
+| --- | --- |
+| Perception Error | 图像看错，或 Vision Agent 没有给出可用观察。 |
+| Retrieval Error | 证据检索错、证据缺失，或 Evidence Quality Score 过低。 |
+| Reasoning Error | 图像和证据可用，但推理链或答案整合错误。 |
+| Verification Error | Verifier 判断错误，例如支持了错误答案。 |
+| Routing Error | Supervisor 选错策略，或实际 agent route 偏离期望路径。 |
+| State Error | Agent 间信息传递错误，例如 shared state 缺失、压缩异常、claim status 丢失。 |
+
+自动归因是启发式规则，不等同于最终医学事实判断。每条错误样本会记录：
+
+```json
+{
+  "error_type": "Retrieval Error",
+  "error_attribution": {
+    "primary_error_type": "Retrieval Error",
+    "candidate_error_types": ["Retrieval Error"],
+    "signals": {
+      "routing_error": false,
+      "state_error": false,
+      "retrieval_error": true,
+      "verification_error": false,
+      "perception_error": false
+    },
+    "requires_human_review": false
+  }
+}
+```
+
+当多个信号同时触发时，`primary_error_type` 使用优先级：
+
+```text
+Routing Error
+State Error
+Retrieval Error
+Verification Error
+Perception Error
+Reasoning Error
+```
+
+这样设计是因为路由和状态错误会污染后续链路，应该优先归因。
+
+## 旧版扩展错误类型
 
 `VISUAL_PERCEPTION_ERROR`
 
