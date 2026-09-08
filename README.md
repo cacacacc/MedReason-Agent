@@ -242,6 +242,34 @@ route = knowledge_agent -> retriever -> reranker -> evidence_filter -> reasoning
 verifier decision = SUPPORTED / UNSUPPORTED / CONTRADICTED
 ```
 
+## AutoDL 4090D Phase 3 配置
+
+AutoDL 单张 RTX 4090D 24GB 推荐先使用这些配置：
+
+```powershell
+python scripts/run_rag.py --config configs/experiments/exp03_rag_qwen_7b_cuda_smoke.yaml
+python scripts/run_rag.py --config configs/experiments/exp03_rag_qwen_7b_cuda_5.yaml
+python scripts/run_rag.py --config configs/experiments/exp03_evidence_rag_qwen_7b_4090d_5.yaml
+python scripts/run_rag.py --config configs/experiments/exp03_knowledge_evidence_rag_qwen_7b_4090d_5.yaml
+```
+
+上传模型到 AutoDL 后，建议把配置里的 `model_id` 改成：
+
+```text
+/root/autodl-tmp/models/Qwen2.5-VL-7B-Instruct
+```
+
+4090D 首跑参数策略：
+
+```text
+torch_dtype: bfloat16
+device_map: auto
+top_k: 2
+candidate_top_k: 6
+max_chars_per_evidence: 450-500
+max_new_tokens: 128-160
+```
+
 ## 接入真实 Qwen2.5-VL
 
 先按你的 CPU / CUDA 环境安装 PyTorch：

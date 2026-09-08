@@ -427,6 +427,47 @@ Full: 451 test samples
 
 CPU 上跑真实 Qwen 时先从 1 条样本开始。
 
+## AutoDL 4090D 配置建议
+
+AutoDL 单张 RTX 4090D 24GB 可以跑 Qwen2.5-VL-7B 的 Phase 3 推理，但仍然要
+按 smoke -> 5 samples -> 20 samples -> 100 samples -> full 的顺序扩大规模。
+
+推荐先跑：
+
+```bash
+python scripts/run_rag.py --config configs/experiments/exp03_rag_qwen_7b_cuda_smoke.yaml
+python scripts/run_rag.py --config configs/experiments/exp03_rag_qwen_7b_cuda_5.yaml
+```
+
+再跑 verifier 路径：
+
+```bash
+python scripts/run_rag.py --config configs/experiments/exp03_evidence_rag_qwen_7b_4090d_5.yaml
+python scripts/run_rag.py --config configs/experiments/exp03_knowledge_evidence_rag_qwen_7b_4090d_5.yaml
+```
+
+4090D 推荐参数：
+
+```yaml
+torch_dtype: bfloat16
+device_map: auto
+candidate_top_k: 6
+top_k: 2
+max_chars_per_evidence: 450
+max_new_tokens: 128
+```
+
+Knowledge-only RAG 可以使用 `max_chars_per_evidence: 500` 和 `max_new_tokens: 160`。
+Evidence-only / Knowledge+Evidence verifier 因为每条样本有两次 VLM 调用，建议先用
+`max_chars_per_evidence: 450` 和 `max_new_tokens: 128`。
+
+如果已经把模型上传到 AutoDL，建议把 Qwen 配置里的 `model_id` 从 Hugging Face 名称
+改成本地路径：
+
+```yaml
+model_id: /root/autodl-tmp/models/Qwen2.5-VL-7B-Instruct
+```
+
 ## Pass Criteria
 
 - `scripts/build_medical_kb.py --seed-medical-vqa` 能生成本地 chunk 文件。
