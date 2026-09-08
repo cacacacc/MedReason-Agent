@@ -275,13 +275,22 @@ max_new_tokens: 256
 Phase 3 的第一版真实 RAG corpus 使用 10,000 篇医学摘要，不要直接上全量。
 这个规模适合作为第一版主实验：足够测试 retrieval quality，又不会让 AutoDL 调试成本
 过高。
-先准备 JSONL：
+先下载 PubMed 摘要 JSONL：
+
+```bash
+python scripts/download_pubmed_abstracts.py \
+  --max-records 10000 \
+  --email your_email@example.com \
+  --output Data/Raw/pmc/pmc_abstracts.jsonl
+```
+
+输出文件：
 
 ```text
 Data/Raw/pmc/pmc_abstracts.jsonl
 ```
 
-每行至少包含 `title` 和 `abstract` 或 `text`。然后构建 chunks：
+每行至少包含 `pmid`、`title`、`abstract` 和 `source`。然后构建 chunks：
 
 ```bash
 python scripts/build_medical_kb.py \

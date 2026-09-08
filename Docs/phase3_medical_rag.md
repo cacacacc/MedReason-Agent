@@ -365,6 +365,25 @@ Phase 3 的 VQA benchmark 仍然是 VQA-RAD。PubMed Central / PubMed 摘要在�
 
 当前脚本支持从 JSONL 构建 10k 摘要知识库：
 
+先下载 PubMed 医学影像相关摘要：
+
+```bash
+python scripts/download_pubmed_abstracts.py \
+  --max-records 10000 \
+  --email your_email@example.com \
+  --output Data/Raw/pmc/pmc_abstracts.jsonl
+```
+
+默认 query 是医学影像相关 PubMed 摘要：
+
+```text
+radiology / imaging / x-ray / radiograph / CT / MRI / ultrasound
+humans
+english
+```
+
+然后构建 tokenizer-level chunks：
+
 ```bash
 python scripts/build_medical_kb.py \
   --input-jsonl Data/Raw/pmc/pmc_abstracts.jsonl \
