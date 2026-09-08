@@ -1,27 +1,29 @@
-experiment_id: exp05_supervisor_multi_agent_dynamic_gate_qwen_7b_4090d_pmc10k_full
-name: Phase 5 Supervisor Dynamic Routing + Answer Gate - Qwen 2.5 VL 7B 4090D PMC 10k Full Test
+experiment_id: exp05_outcome_verifier_qwen_7b_4090d_pmc10k_20
+name: Phase 5 Outcome-Level Verifier - Qwen 2.5 VL 7B 4090D PMC 10k 20 Samples
 phase: 5
 inherits: configs/base.yaml
 
 method:
-  type: multi_agent
+  type: verification
   backend: qwen2_5_vl
   model_id: /root/autodl-tmp/models/Qwen2.5-VL-7B-Instruct
   torch_dtype: bfloat16
   device_map: auto
-  prompt_version: supervisor_multi_agent_v1
-  prompt_contract: structured_supervisor_agents_dynamic_gate_v2
-  dynamic_routing: true
-  deterministic_answer_gate: true
+  prompt_version: phase5_process_verification_v2
+  prompt_contract: outcome_verifier_answer_only_no_internal_verifier_v1
   agent_mode: supervisor_multi_agent
-  rag_mode: supervised_dynamic_retrieval_verification
+  verification_mode: outcome_verifier
+  selective_verification: all
+  dynamic_routing: false
+  deterministic_answer_gate: false
+  rag_mode: supervised_retrieval_verification
   training_epochs: 0
 
 dataset:
   name: VQA-RAD
   split: test
-  scale: full
-  max_samples: null
+  scale: smoke
+  max_samples: 20
 
 retrieval:
   enabled: true
@@ -43,6 +45,6 @@ generation:
   max_new_tokens: 256
 
 outputs:
-  result_dir: Results/exp05_supervisor_multi_agent_dynamic_gate_qwen_7b_4090d_pmc10k_full
+  result_dir: Results/exp05_outcome_verifier_qwen_7b_4090d_pmc10k_20
   prediction_file: predictions.jsonl
   metrics_file: metrics.json

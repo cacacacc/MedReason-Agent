@@ -1,0 +1,44 @@
+experiment_id: exp05_selective_verifier
+name: Phase 5 Selective Process Verifier - Mock Smoke
+phase: 5
+inherits: configs/base.yaml
+
+method:
+  type: verification
+  backend: mock
+  model_id: mock-vlm
+  prompt_version: phase5_process_verification_v2
+  prompt_contract: separate_verifier_process_level_selective_risk_rule_v1
+  agent_mode: supervisor_multi_agent
+  verification_mode: separate_verifier
+  selective_verification: risk_rule
+  dynamic_routing: false
+  deterministic_answer_gate: false
+  rag_mode: supervised_retrieval_verification
+  training_epochs: 0
+
+dataset:
+  name: VQA-RAD
+  split: test
+  scale: smoke
+  max_samples: 20
+
+retrieval:
+  enabled: true
+  retriever: keyword
+  corpus_path: Data/Processed/medical_kb/seed_chunks.jsonl
+  reranker: keyword_reranker
+  candidate_top_k: 5
+  top_k: 3
+  min_rerank_score: 0.0
+  max_chars_per_evidence: 500
+
+generation:
+  temperature: 0.0
+  top_p: 1.0
+  max_new_tokens: 256
+
+outputs:
+  result_dir: Results/exp05_selective_verifier
+  prediction_file: predictions.jsonl
+  metrics_file: metrics.json

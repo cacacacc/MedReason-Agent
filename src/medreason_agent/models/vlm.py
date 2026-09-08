@@ -78,6 +78,58 @@ class MockVLMBackend:
                 "Verifier Agent, Answer Agent\n"
                 "Rationale: mock supervisor selects the full reliable route."
             )
+        elif "Self-Reflection for the same clinical reasoning agent" in request.prompt:
+            raw_output = (
+                '{"decision": "KEEP", "issues": [], '
+                '"reflection": "mock self-reflection keeps the candidate answer.", '
+                '"revision_instruction": ""}'
+            )
+        elif "Revise your previous clinical reasoning answer" in request.prompt:
+            raw_output = (
+                "Reasoning: mock self-revision path.\n"
+                f"Claims:\n- {answer}\n"
+                f'Claim Statuses:\n{{"claim": "{answer}", "status": "HYPOTHESIS"}}\n'
+                "Unsupported Assumptions: None.\n"
+                f"Final Answer: {answer}"
+            )
+        elif "Act as an independent process-level medical verifier" in request.prompt:
+            raw_output = (
+                '{"verdict": "PASS", '
+                '"step_results": ['
+                '{"step_id": "obs_1", "status": "SUPPORTED", '
+                '"error_type": null, "confidence": 0.9}, '
+                '{"step_id": "reason_1", "status": "SUPPORTED", '
+                '"error_type": null, "confidence": 0.9}], '
+                '"grounding_score": 0.9, '
+                '"logical_consistency": 0.9, '
+                '"confidence_alignment": 0.9, '
+                '"error_types": [], '
+                '"recommended_action": "PASS", '
+                '"revision_instruction": ""}'
+            )
+        elif "Act as an independent outcome-level medical verifier" in request.prompt:
+            raw_output = (
+                '{"verdict": "PASS", '
+                '"step_results": [{"step_id": "answer_1", "status": "UNCERTAIN", '
+                '"error_type": null, "confidence": 0.5}], '
+                '"grounding_score": null, '
+                '"logical_consistency": null, '
+                '"confidence_alignment": 0.5, '
+                '"error_types": [], '
+                '"recommended_action": "PASS", '
+                '"revision_instruction": ""}'
+            )
+        elif (
+            "Revise the candidate answer using the independent verifier feedback"
+            in request.prompt
+        ):
+            raw_output = (
+                "Reasoning: mock verifier-guided revision path.\n"
+                f"Claims:\n- {answer}\n"
+                f'Claim Statuses:\n{{"claim": "{answer}", "status": "HYPOTHESIS"}}\n'
+                "Unsupported Assumptions: None.\n"
+                f"Final Answer: {answer}"
+            )
         elif "Act as a medical image specialist" in request.prompt:
             raw_output = (
                 "Observation: mock visual observation.\n"
