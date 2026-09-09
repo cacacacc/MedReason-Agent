@@ -48,23 +48,26 @@ Full test 结果如下：
 
 | Method | Samples | Accuracy | Correct | Token F1 | BLEU-1 | Mean Latency |
 |---|---:|---:|---:|---:|---:|---:|
-| Direct VLM | 451 | 49.22% | 222 / 451 | 55.41% | 53.97% | 4.36 s |
-| CoT Prompt | 451 | 43.02% | 194 / 451 | 51.19% | 49.24% | 72.41 s |
-| Fixed Multi-Agent | 451 | 39.02% | 176 / 451 | 45.63% | 44.13% | 11.61 s |
-| Supervisor Multi-Agent + PMC 10k | 451 | 28.16% | 127 / 451 | 35.22% | 33.24% | 14.86 s |
+| Direct VLM | 451 | 49.89% | 225 / 451 | 56.09% | 54.59% | 4.36 s* |
+| CoT Prompt | 451 | 43.90% | 198 / 451 | 51.24% | 49.52% | 72.41 s* |
+| Fixed Multi-Agent | 451 | 39.69% | 179 / 451 | 42.15% | 41.61% | 9.32 s |
+| Supervisor Multi-Agent + PMC 10k | 451 | 31.26% | 141 / 451 | 37.31% | 35.71% | 14.86 s |
+
+`*` Direct VLM 和 CoT 的 latency 沿用此前运行记录；本次更新的 Phase 4 latency 来自最新
+预测文件的 `latency_ms` 统计。
 
 相对 Direct VLM：
 
 ```text
 Fixed Multi-Agent delta：-10.20 percentage points
-Supervisor Multi-Agent delta：-21.06 percentage points
+Supervisor Multi-Agent delta：-18.63 percentage points
 ```
 
 相对 CoT Prompt：
 
 ```text
-Fixed Multi-Agent delta：-3.99 percentage points
-Supervisor Multi-Agent delta：-14.86 percentage points
+Fixed Multi-Agent delta：-4.21 percentage points
+Supervisor Multi-Agent delta：-12.64 percentage points
 ```
 
 当前结果表明，简单拆分角色并没有超过单模型 Direct VLM；加入 Supervisor 和检索验证后，
@@ -74,21 +77,21 @@ Supervisor Multi-Agent delta：-14.86 percentage points
 
 ```text
 Experiment：exp04_fixed_multi_agent_qwen_7b_4090d_full
-Accuracy：0.3902439024390244
-Correct：176 / 451
-Mean token F1：0.45631439448773475
-Mean BLEU-1：0.44125806397068107
-Mean latency：11612.85 ms
-Median latency：11602.75 ms
-P90 latency：14257.76 ms
-Max latency：25942.85 ms
+Accuracy：0.3968957871396896
+Correct：179 / 451
+Mean token F1：0.4214566653004112
+Mean BLEU-1：0.4160617885518791
+Mean latency：9316.02 ms
+Median latency：9452.40 ms
+P90 latency：11534.72 ms
+Max latency：18240.64 ms
 ```
 
 按答案类型：
 
 ```text
-CLOSED：156 / 272 = 57.35%
-OPEN：20 / 179 = 11.17%
+CLOSED：171 / 272 = 62.87%
+OPEN：8 / 179 = 4.47%
 ```
 
 Fixed Multi-Agent 没有启用外部检索，因此：
@@ -96,22 +99,22 @@ Fixed Multi-Agent 没有启用外部检索，因此：
 ```text
 Evidence empty rate：1.0
 Mean evidence quality：0.0
-Claim status：941 HYPOTHESIS
+Claim status：911 HYPOTHESIS
 Critic ACCEPT：248
 Critic REVISE：202
 ```
 
 当前记录中的 `HYPOTHESIS` 是 reasoning claims 的默认状态，不等同于全部 claim 都被判定为
-错误。该路径的 hallucination rate 为 `0.4523`，但没有 retrieval evidence 可用于验证 claim。
+错误。该路径的 hallucination rate 为 `0.5122`，但没有 retrieval evidence 可用于验证 claim。
 
 ## Supervisor Multi-Agent Full Test
 
 ```text
 Experiment：exp04_supervisor_multi_agent_qwen_7b_4090d_pmc10k_full
-Accuracy：0.28159645232815966
-Correct：127 / 451
-Mean token F1：0.35219225762136935
-Mean BLEU-1：0.33242786345340886
+Accuracy：0.31263858093126384
+Correct：141 / 451
+Mean token F1：0.3731050600197594
+Mean BLEU-1：0.3571008839408528
 Mean latency：14858.46 ms
 Median latency：14769.46 ms
 P90 latency：18232.35 ms
@@ -145,7 +148,7 @@ CONTRADICTED：0
 OBSERVED：0
 ```
 
-Supervisor 的 hallucination rate 为 `0.6208`，高于 Fixed Multi-Agent 的 `0.4523`。
+Supervisor 的 hallucination rate 为 `0.6208`，高于 Fixed Multi-Agent 的 `0.5122`。
 这说明当前 Verifier 虽然能够产生 claim-level labels，但并没有稳定地把不支持的 claim
 转化为更准确的最终答案。
 
@@ -210,8 +213,8 @@ Supervisor、FAISS、Qwen 本地模型和结果写入流程正常。
 ```text
 Knowledge RAG accuracy：22.84%
 Knowledge + Evidence RAG accuracy：11.53%
-Fixed Multi-Agent accuracy：39.02%
-Supervisor Multi-Agent accuracy：28.16%
+Fixed Multi-Agent accuracy：39.69%
+Supervisor Multi-Agent accuracy：31.26%
 ```
 
 Fixed Multi-Agent 高于两条 Phase 3 RAG 路径，但仍低于 Direct VLM。Supervisor Multi-Agent
@@ -222,8 +225,8 @@ Fixed Multi-Agent 高于两条 Phase 3 RAG 路径，但仍低于 Direct VLM。Su
 
 当前 Phase 4 full test 的主要结论是：
 
-1. Fixed Multi-Agent 没有超过 Direct VLM，accuracy 从 `49.22%` 降至 `39.02%`。
-2. Supervisor Multi-Agent 没有超过 Fixed Multi-Agent，accuracy 为 `28.16%`。
+1. Fixed Multi-Agent 没有超过 Direct VLM，accuracy 从 `49.89%` 降至 `39.69%`。
+2. Supervisor Multi-Agent 没有超过 Fixed Multi-Agent，accuracy 为 `31.26%`。
 3. Supervisor 的 evidence quality 为 `0.6904`，但较好的证据覆盖没有转化为更好的最终答案。
 4. Supervisor 的 hallucination rate 为 `0.6208`，说明当前 claim verification 和 answer
    generation 之间仍存在明显断裂。
@@ -238,8 +241,65 @@ Supervisor 架构提升了 VQA accuracy 的正向结果。
 1. 修正 Supervisor 的 `expected_selected_tools` 和实际输出格式，重新计算 tool selection accuracy。
 2. 让 Answer Agent 对 `UNSUPPORTED` claim 进行短答案约束，而不是直接生成冗长或过度谨慎的答案。
 3. 增加 deterministic answer gate，并单独报告 gate enabled / disabled 的结果。
-4. 对 324 个 incorrect samples 做人工抽样，校准 Perception、Routing 和 Verification 的归因规则。
+4. 对最新 Supervisor full 的 310 个 incorrect samples 做人工抽样，校准 Perception、Routing 和 Verification 的归因规则。
 5. 将 Dynamic Gate 配置作为 Phase 5 独立实验，不与当前 Phase 4 full 结果混合。
+
+## 100-Sample Tuning / Ablation Results
+
+以下四组实验均使用 VQA-RAD test split 的前 100 条样本，属于 tuning / ablation 结果，
+不与 451 条 full test 结果混合。四组预测文件均为 100/100 条，唯一 sample_id 为 100，
+空预测为 0。
+
+| Method | Top-k | Accuracy | Correct | Token F1 | BLEU-1 | Evidence Quality | Empty Evidence | Tool Selection |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Supervisor baseline | 5 | 35% | 35 / 100 | 36.90% | 36.65% | 0.6897 | 0.0 | 0.0 |
+| Supervisor top-k ablation | 3 | 31% | 31 / 100 | 32.28% | 31.85% | 0.6027 | 0.0 | 0.0 |
+| Supervisor top-k ablation | 10 | 36% | 36 / 100 | 37.65% | 37.30% | 0.7567 | 0.0 | 0.0 |
+| Heuristic question routing | 5 | 41% | 41 / 100 | 42.71% | 42.35% | 0.0778 | 0.87 | 1.0 |
+
+### Top-k Ablation
+
+在默认 Supervisor 路由下，top-k=10 的 accuracy 为 `36%`，高于 top-k=5 的 `35%` 和
+top-k=3 的 `31%`。top-k=10 同时获得最高 evidence quality、question coverage 和
+answer coverage：
+
+```text
+top-k=3：evidence quality 0.6027，question coverage 0.6333，answer coverage 0.3059
+top-k=5：evidence quality 0.6897，question coverage 0.7144，answer coverage 0.4382
+top-k=10：evidence quality 0.7567，question coverage 0.7667，answer coverage 0.5961
+```
+
+这组 100 条结果显示，增加 evidence 数量改善了规则版证据覆盖，但 accuracy 提升有限，
+且 top-k=10 的 hallucination rate `0.39` 低于 top-k=5 的 `0.61` 和 top-k=3 的 `0.77`。
+
+### Heuristic Question Routing
+
+Heuristic routing 获得了四组中最高的 accuracy：
+
+```text
+Accuracy：0.41
+Correct：41 / 100
+Mean reasoning score：0.805
+Hallucination rate：0.04
+Tool selection accuracy：1.0
+Evidence empty rate：0.87
+```
+
+它的主要代价是大量样本没有检索证据，evidence empty rate 达到 `0.87`，mean evidence
+quality 只有 `0.0778`。因此这组结果不能简单解释为“检索质量更好”，更可能说明启发式
+路由在部分问题上跳过了检索并减少了错误传播。它需要在更大样本和统一 latency 统计下
+继续验证。
+
+### 100-Sample 结论
+
+```text
+最高 accuracy：Heuristic routing，41%
+最高 evidence quality：top-k=10，0.7567
+最低 hallucination rate：Heuristic routing，0.04
+```
+
+这四组 100 条实验适合用于选择下一轮 full run 的候选配置，但不应替代 451 条 full test
+结果。下一步应优先验证 heuristic routing 和 top-k=10，并补充严格一致的运行成本指标。
 
 ## 结果文件
 
@@ -250,6 +310,14 @@ Results/exp04_supervisor_multi_agent_qwen_7b_4090d_pmc10k_full/predictions.jsonl
 Results/exp04_supervisor_multi_agent_qwen_7b_4090d_pmc10k_full/metrics.json
 Results/exp04_supervisor_multi_agent_qwen_7b_4090d_pmc10k_20/predictions.jsonl
 Results/exp04_supervisor_multi_agent_qwen_7b_4090d_pmc10k_20/metrics.json
+Results/exp04_supervisor_multi_agent_qwen_7b_4090d_pmc10k_100/predictions.jsonl
+Results/exp04_supervisor_multi_agent_qwen_7b_4090d_pmc10k_100/metrics.json
+Results/exp04_supervisor_multi_agent_qwen_7b_4090d_pmc10k_k3_100/predictions.jsonl
+Results/exp04_supervisor_multi_agent_qwen_7b_4090d_pmc10k_k3_100/metrics.json
+Results/exp04_supervisor_multi_agent_qwen_7b_4090d_pmc10k_k10_100/predictions.jsonl
+Results/exp04_supervisor_multi_agent_qwen_7b_4090d_pmc10k_k10_100/metrics.json
+Results/exp04_supervisor_multi_agent_heuristic_routing_qwen_7b_4090d_pmc10k_100/predictions.jsonl
+Results/exp04_supervisor_multi_agent_heuristic_routing_qwen_7b_4090d_pmc10k_100/metrics.json
 ```
 
 `Results/` 被 `.gitignore` 忽略，因此本文件作为 Phase 4 实验结果的 tracked summary。

@@ -222,3 +222,75 @@ Results/exp05_separate_verifier_qwen_7b_4090d_pmc10k_full/metrics.json
 ```
 
 `Results/` 被 `.gitignore` 忽略，因此本文件是 Phase 5 full 结果的 tracked summary。
+
+## 100-Sample Tuning / Ablation Results
+
+以下三组实验使用 VQA-RAD test split 的前 100 条样本，属于 tuning / ablation 结果，
+不与 451 条 full test 结果混合。三组预测均为 100/100 条，唯一 sample_id 为 100，
+空预测为 0。
+
+| Method | Accuracy | Correct | Token F1 | BLEU-1 | Mean Latency | Candidate Accuracy | Final Accuracy |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Supervisor No Critic | 36% | 36 / 100 | 38.15% | 37.80% | 8.19 s | 36% | 36% |
+| Self-Reflection | 26% | 26 / 100 | 28.15% | 27.80% | 15.49 s | 36% | 26% |
+| Separate Verifier | 34% | 34 / 100 | 36.15% | 35.80% | 17.44 s | 36% | 34% |
+
+### Candidate 到 Final 的变化
+
+三个方法的候选答案 accuracy 都是 `36%`，但后处理后的最终结果不同：
+
+```text
+Supervisor No Critic：不修改候选答案，36% -> 36%
+Self-Reflection：修正 6 条，回归 16 条，36% -> 26%，net correction = -10
+Separate Verifier：修正 4 条，回归 6 条，36% -> 34%，net correction = -2
+```
+
+Self-Reflection 的 revision rate 为 `0.88`，但正确答案保留率只有 `0.5556`；Separate
+Verifier 的 revision rate 为 `1.0`，正确答案保留率为 `0.8333`。这表明在 100 条 tuning
+样本上，Separate Verifier 比 Self-Reflection 稳定，但仍然没有超过不做 revision 的 No Critic。
+
+### 可靠性与成本
+
+```text
+Supervisor No Critic：hallucination rate 0.00，verifier calls 0，agent calls 7.0
+Self-Reflection：hallucination rate 0.88，verifier calls 0，agent calls 8.88
+Separate Verifier：hallucination rate 1.00，verifier calls 100，agent calls 9.0
+```
+
+三组实验的 evidence 指标相同：
+
+```text
+Mean evidence quality：0.6106
+Mean question coverage：0.6596
+Mean answer coverage：0.2324
+Evidence empty rate：0.0
+```
+
+Separate Verifier 每条样本都调用 verifier，平均耗时最高，为 `17.44 s`；Self-Reflection
+平均耗时 `15.49 s`；No Critic 最快，为 `8.19 s`。
+
+### 100-Sample 结论
+
+```text
+最高 accuracy：Supervisor No Critic，36%
+最低 latency：Supervisor No Critic，8.19 s / sample
+最少 answer regression：Supervisor No Critic，0 条
+Self-Reflection net correction：-10
+Separate Verifier net correction：-2
+```
+
+这组三组 100 条结果支持当前 Phase 5 的初步判断：验证和自反思增加了计算成本，
+但在当前 prompt 和答案抽取协议下没有带来最终答案 accuracy 提升。Separate Verifier
+比 Self-Reflection 更稳定，但仍低于 No Critic。需要在 451 条 full test 上进一步验证，
+不能仅凭 100 条样本得出最终结论。
+
+新增结果文件：
+
+```text
+Results/exp05_supervisor_no_critic_qwen_7b_4090d_pmc10k_100/predictions.jsonl
+Results/exp05_supervisor_no_critic_qwen_7b_4090d_pmc10k_100/metrics.json
+Results/exp05_self_reflection_qwen_7b_4090d_pmc10k_100/predictions.jsonl
+Results/exp05_self_reflection_qwen_7b_4090d_pmc10k_100/metrics.json
+Results/exp05_separate_verifier_qwen_7b_4090d_pmc10k_100/predictions.jsonl
+Results/exp05_separate_verifier_qwen_7b_4090d_pmc10k_100/metrics.json
+```
