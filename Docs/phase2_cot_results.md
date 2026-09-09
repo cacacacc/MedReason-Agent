@@ -2,7 +2,7 @@
 
 ## 实验设置
 
-本阶段比较 `Direct Answer` 和 `Chain-of-Thought Prompt`，模型和数据保持一致，只改变 prompt 形式。
+本阶段比较 `Direct Answer`、`Vanilla CoT` 和 `Structured CoT`，模型和数据保持一致，只改变 prompt 形式。
 
 ```text
 模型：Qwen/Qwen2.5-VL-7B-Instruct
@@ -10,8 +10,8 @@
 split：test
 样本数：451
 Direct 结果：Results/exp01_direct_vlm_qwen_7b_cuda_full
-CoT 结果：Results/exp02_cot_qwen_7b_cuda_full
-对比输出：Results/compare_direct_vs_cot_qwen_7b_cuda_full
+Vanilla CoT 结果：Results/exp02_vanilla_cot_qwen_7b_4090d_full
+Structured CoT 结果：Results/exp02_structured_cot_qwen_7b_4090d_full
 ```
 
 CoT prompt 要求模型输出：
@@ -28,28 +28,39 @@ Final Answer
 
 | Method | Samples | Accuracy | Correct | Token F1 | BLEU-1 |
 |---|---:|---:|---:|---:|---:|
-| Direct Answer | 451 | 49.22% | 222 / 451 | 55.41% | 53.97% |
-| CoT Prompt | 451 | 43.02% | 194 / 451 | 51.19% | 49.24% |
+| Direct Answer | 451 | 49.89% | 225 / 451 | 56.09% | 54.59% |
+| Vanilla CoT | 451 | 43.68% | 197 / 451 | 51.00% | 49.10% |
+| Structured CoT | 451 | 43.90% | 198 / 451 | 51.24% | 49.52% |
 
-结论：在当前 VQA-RAD full test 上，CoT 没有提升 baseline，反而使 accuracy 下降了 **6.21 个百分点**。
+结论：在本次 VQA-RAD full test 重跑中，两种 CoT 都没有提升 Direct baseline。
+Structured CoT 比 Vanilla CoT 高 `0.22` 个百分点，但只多答对 1 条。
 
 ```text
-Direct Accuracy = 0.4922
-CoT Accuracy    = 0.4302
-Delta           = -0.0621
+Direct Accuracy           = 0.4989
+Vanilla CoT Accuracy     = 0.4368
+Structured CoT Accuracy  = 0.4390
+Vanilla CoT delta         = -0.0621
+Structured CoT delta      = -0.0599
+Structured vs Vanilla     = +0.0022
 ```
 
 ## 运行成本
 
-| Method | Mean Latency | Median Latency |
-|---|---:|---:|
-| Direct Answer | 4.36 s / sample | 2.57 s / sample |
-| CoT Prompt | 72.41 s / sample | 69.90 s / sample |
+本次三个 full 实验的 `metrics.json` 没有写入 latency 字段，因此本次重跑只汇总答案质量指标，
+不对运行成本做新的数值结论。下面的 latency 数字属于此前运行记录，不应与本次主表混用。
+
+| Method | Mean Latency | Median Latency | 数据口径 |
+|---|---:|---:|---|
+| Direct Answer | 4.36 s / sample | 2.57 s / sample | 此前运行 |
+| CoT Prompt | 72.41 s / sample | 69.90 s / sample | 此前运行 |
 
 CoT 的平均单题耗时约为 Direct 的 **16.6 倍**，中位耗时约为 Direct 的 **27.2 倍**。  
 这说明在 RTX 4070 上，CoT 的额外 reasoning token 成本非常高。
 
 ## Direct vs CoT 逐题对比
+
+本次重跑没有生成 `compare_direct_vs_cot` 逐题对比文件，因此以下逐题统计属于此前运行，
+仅作为历史参考；本次可确认的汇总结果以“主结果”表为准。
 
 | Outcome | Count | Meaning |
 |---|---:|---|
@@ -131,10 +142,10 @@ Naive CoT Prompt does not improve Qwen2.5-VL-7B on VQA-RAD full test.
 
 更具体地说：
 
-1. CoT accuracy 低于 Direct Answer。
-2. CoT latency 明显更高，不适合直接作为默认 baseline。
-3. CoT 对部分 `SIZE` 问题可能有帮助。
-4. CoT 对 `ABN`、`PLANE`、`PRES` 等问题可能引入错误推理。
+1. 本次重跑中 Vanilla CoT 和 Structured CoT accuracy 均低于 Direct Answer。
+2. Structured CoT 只比 Vanilla CoT 高 `0.22` 个百分点，提升幅度很小。
+3. 本次 `metrics.json` 未记录 latency，运行成本结论应以后续补充的 latency 统计为准。
+4. 旧版逐题和分类型统计来自此前运行，不能直接当作本次重跑的分项结果。
 5. 后续应重点做 GPT-based evaluation 和错误类型标注，因为 exact-match 对 OPEN 答案偏严格。
 
 ## 下一步
