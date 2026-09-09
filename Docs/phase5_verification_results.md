@@ -284,6 +284,44 @@ Separate Verifier net correction：-2
 比 Self-Reflection 更稳定，但仍低于 No Critic。需要在 451 条 full test 上进一步验证，
 不能仅凭 100 条样本得出最终结论。
 
+## Selective Verifier + Heuristic Routing
+
+该实验使用 100 条 tuning 样本，将 selective verifier 与 heuristic routing 组合：
+
+```text
+Experiment：exp05_selective_verifier_heuristic_routing_qwen_7b_4090d_pmc10k_100
+Samples：100
+Accuracy：0.36
+Correct：36 / 100
+Mean token F1：0.3771
+Mean BLEU-1：0.3735
+Mean latency：12.19 s
+Mean agent calls：5.17
+```
+
+候选答案到最终答案的变化：
+
+```text
+Candidate accuracy：0.39
+Final accuracy：0.36
+Verifier calls：71 / 100
+Selective verification rate：0.71
+Revision rate：0.70
+Error corrections：4
+Error correction rate：0.0164
+Error regressions：6
+Error regression rate：0.1026
+Correct-answer preservation：0.8974
+Net correction：-3
+```
+
+该实验的 evidence empty rate 为 `0.95`，mean evidence quality 仅 `0.0320`，
+hallucination rate 为 `0.70`。虽然 heuristic routing 的 tool selection accuracy 为 `1.0`，
+但大量样本跳过了检索，导致 selective verifier 缺少可用证据，最终 accuracy 低于候选答案。
+
+因此，Selective Verifier + Heuristic Routing 在当前 100 条 tuning 结果中没有显示出
+答案纠错收益；它适合用于分析“选择性验证在证据缺失时的行为”，不应作为当前最佳配置。
+
 新增结果文件：
 
 ```text
@@ -293,4 +331,6 @@ Results/exp05_self_reflection_qwen_7b_4090d_pmc10k_100/predictions.jsonl
 Results/exp05_self_reflection_qwen_7b_4090d_pmc10k_100/metrics.json
 Results/exp05_separate_verifier_qwen_7b_4090d_pmc10k_100/predictions.jsonl
 Results/exp05_separate_verifier_qwen_7b_4090d_pmc10k_100/metrics.json
+Results/exp05_selective_verifier_heuristic_routing_qwen_7b_4090d_pmc10k_100/predictions.jsonl
+Results/exp05_selective_verifier_heuristic_routing_qwen_7b_4090d_pmc10k_100/metrics.json
 ```

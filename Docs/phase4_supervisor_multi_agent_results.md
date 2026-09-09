@@ -301,6 +301,43 @@ quality 只有 `0.0778`。因此这组结果不能简单解释为“检索质量
 这四组 100 条实验适合用于选择下一轮 full run 的候选配置，但不应替代 451 条 full test
 结果。下一步应优先验证 heuristic routing 和 top-k=10，并补充严格一致的运行成本指标。
 
+## Additional 100-Sample Memory / Routing Ablations
+
+随后完成的三组 100 条实验同样属于 tuning / ablation，不与 451 条 full test 结果混合。
+三组预测均为 100/100 条，唯一 sample_id 为 100，空预测为 0。
+
+| Method | Accuracy | Token F1 | BLEU-1 | Evidence Quality | Empty Evidence | Hallucination | Tool Selection | Memory Hits |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Heuristic + k10 | 39% | 40.71% | 40.35% | 0.0862 | 87% | 3% | 1.0 | 0.00 |
+| Supervisor + Memory | 34% | 37.48% | 36.39% | 0.6712 | 0% | 41% | 0.0 | 2.93 |
+| Heuristic + k10 + Memory | 38% | 41.76% | 40.98% | 0.0887 | 87% | 1% | 1.0 | 2.93 |
+
+### 结果解读
+
+```text
+Heuristic + k10：accuracy 39%，tool selection 1.0，但 evidence empty rate 0.87。
+Supervisor + Memory：evidence quality 0.6712，memory hits 2.93，但 accuracy 34%。
+Heuristic + k10 + Memory：accuracy 38%，hallucination 1%，但 evidence empty rate 0.87。
+```
+
+Memory 在 heuristic routing 下将 hallucination 从 `3%` 降到 `1%`，但 accuracy 从 `39%`
+降到 `38%`；在普通 Supervisor 路由下，memory 提供了平均 `2.93` 条历史记忆，但 accuracy
+只有 `34%`。这说明 memory 当前更像可靠性审计辅助信号，还没有稳定转化为答案质量提升。
+
+与此前 heuristic + k10 的 100 条结果相比，本次结果的 accuracy 为 `39%`，低于此前的
+`41%`；由于两次实验均为 100 条 tuning 样本，不能据此下 full-test 结论。
+
+新增结果文件：
+
+```text
+Results/exp04_supervisor_multi_agent_heuristic_routing_qwen_7b_4090d_pmc10k_k10_100/predictions.jsonl
+Results/exp04_supervisor_multi_agent_heuristic_routing_qwen_7b_4090d_pmc10k_k10_100/metrics.json
+Results/exp04_supervisor_multi_agent_qwen_7b_4090d_pmc10k_memory_100/predictions.jsonl
+Results/exp04_supervisor_multi_agent_qwen_7b_4090d_pmc10k_memory_100/metrics.json
+Results/exp04_supervisor_multi_agent_heuristic_routing_qwen_7b_4090d_pmc10k_k10_memory_100/predictions.jsonl
+Results/exp04_supervisor_multi_agent_heuristic_routing_qwen_7b_4090d_pmc10k_k10_memory_100/metrics.json
+```
+
 ## 结果文件
 
 ```text
