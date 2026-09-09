@@ -59,7 +59,11 @@ def build_prediction_record(
     metadata: dict[str, Any],
 ) -> dict[str, Any]:
     """构造一条项目标准 RAG prediction record。"""
-    correct = exact_match(agent_result.prediction, sample.answer)
+    correct = exact_match(
+        agent_result.prediction,
+        sample.answer,
+        question=sample.question,
+    )
     # Evidence Quality Score 衡量检索证据和当前样本的相关性。
     # 它和 answer accuracy 分开记录，方便后续判断问题出在检索还是生成。
     evidence_quality = score_evidence_quality(

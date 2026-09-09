@@ -142,7 +142,7 @@ class FixedMultiAgent:
         )
         shared_state.add_agent_output("answer_agent", answer.raw_output)
         gated_prediction = _apply_answer_gate(
-            extract_final_answer(answer.raw_output),
+            extract_final_answer(answer.raw_output, question=sample.question),
             answer_gate,
         )
         generated_claims = extract_claims(reasoning.raw_output)
@@ -255,6 +255,7 @@ class SupervisorMultiAgent:
         dynamic_routing: bool = False,
         deterministic_answer_gate: bool = False,
         internal_verifier: bool = True,
+        question_routing: str = "none",
     ) -> None:
         self.backend = backend
         self.retrieval_pipeline = retrieval_pipeline
@@ -262,6 +263,7 @@ class SupervisorMultiAgent:
         self.dynamic_routing = dynamic_routing
         self.deterministic_answer_gate = deterministic_answer_gate
         self.internal_verifier = internal_verifier
+        self.question_routing = question_routing
 
     def run(
         self,
@@ -282,6 +284,10 @@ class SupervisorMultiAgent:
             extract_selected_tools(supervisor.raw_output),
             fallback=self.expected_selected_tools,
         )
+        if self.question_routing == "heuristic":
+            selected_tools = _heuristic_selected_tools(sample, selected_tools)
+        elif self.question_routing != "none":
+            raise ValueError(f"Unsupported question_routing: {self.question_routing}")
         shared_state.set_selected_tools(selected_tools)
         shared_state.add_agent_output("supervisor_agent", supervisor.raw_output)
         agent_route = ["supervisor_agent"]
@@ -394,7 +400,11 @@ class SupervisorMultiAgent:
         verifier_output = ""
         verifier = None
         if should_run_verifier:
-            claim = claims[0] if claims else extract_final_answer(reasoning_output)
+            claim = (
+                claims[0]
+                if claims
+                else extract_final_answer(reasoning_output, question=sample.question)
+            )
             evidence_query = build_claim_verification_query(
                 question=sample.question,
                 claim=claim,
@@ -466,7 +476,7 @@ class SupervisorMultiAgent:
         agent_route.append("answer_agent")
         tool_calls.append({"tool": "vlm_generate", "stage": "answer_agent"})
         gated_prediction = _apply_answer_gate(
-            extract_final_answer(answer.raw_output),
+            extract_final_answer(answer.raw_output, question=sample.question),
             answer_gate,
         )
         shared_state_record = shared_state.to_record()
@@ -535,6 +545,7 @@ def create_multi_agent(
     dynamic_routing: bool = False,
     deterministic_answer_gate: bool = False,
     internal_verifier: bool = True,
+    question_routing: str = "none",
 ) -> FixedMultiAgent | SupervisorMultiAgent:
     """根据配置创建 Phase 4 agent。"""
     if mode == FixedMultiAgent.mode:
@@ -547,6 +558,7 @@ def create_multi_agent(
             dynamic_routing=dynamic_routing,
             deterministic_answer_gate=deterministic_answer_gate,
             internal_verifier=internal_verifier,
+            question_routing=question_routing,
         )
     raise ValueError(f"Unsupported multi-agent mode: {mode}")
 
@@ -616,6 +628,86 @@ def _planned_route_from_tools(
         route.append("verifier_agent")
     route.append("answer_agent")
     return route
+
+
+def _heuristic_selected_tools(
+    sample: VQARADSample,
+    supervisor_tools: list[str],
+) -> list[str]:
+    """用问题类型约束工具选择，避免简单视觉题被 RAG/Verifier 干扰。
+
+    这不是训练出来的 router，而是 Phase4/5 的可解释调参开关。它只减少不必要工具，
+    不会在 Verifier 之后触发重规划。
+    """
+    if _is_simple_visual_question(sample):
+        return ["Vision Agent", "Answer Agent"]
+    if _is_visual_reasoning_question(sample):
+        return ["Vision Agent", "Reasoning Agent", "Answer Agent"]
+    if _needs_external_medical_knowledge(sample):
+        return _ensure_tools(
+            supervisor_tools,
+            [
+                "Vision Agent",
+                "Retrieval Agent",
+                "Reasoning Agent",
+                "Verifier Agent",
+                "Answer Agent",
+            ],
+        )
+    return _ensure_tools(
+        [tool for tool in supervisor_tools if tool != "Verifier Agent"],
+        ["Vision Agent", "Reasoning Agent", "Answer Agent"],
+    )
+
+
+def _is_simple_visual_question(sample: VQARADSample) -> bool:
+    """识别适合 Vision + Answer 的简单 closed visual question。"""
+    question_type = sample.question_type.upper()
+    answer_type = sample.answer_type.upper()
+    return answer_type == "CLOSED" and question_type in {
+        "PRES",
+        "MODALITY",
+        "PLANE",
+        "ORGAN",
+        "COUNT",
+        "COLOR",
+    }
+
+
+def _is_visual_reasoning_question(sample: VQARADSample) -> bool:
+    """识别需要图像观察和轻量推理、但通常不需要外部知识的问题。"""
+    return sample.question_type.upper() in {"POS", "SIZE", "ATTRIB"}
+
+
+def _needs_external_medical_knowledge(sample: VQARADSample) -> bool:
+    """识别更可能需要外部医学知识的问题。"""
+    question = sample.question.lower()
+    if sample.question_type.upper() in {"ABN", "OTHER"}:
+        return True
+    knowledge_markers = (
+        "diagnosis",
+        "diagnostic",
+        "disease",
+        "cause",
+        "represent",
+        "compatible",
+        "suggest",
+        "consistent with",
+        "abnormality",
+        "abnormal",
+        "pathology",
+    )
+    return any(marker in question for marker in knowledge_markers)
+
+
+def _ensure_tools(tools: list[str], fallback: list[str]) -> list[str]:
+    """确保工具列表非空且包含 Answer Agent。"""
+    selected = [tool for tool in tools if tool in SupervisorMultiAgent.expected_selected_tools]
+    if not selected:
+        selected = list(fallback)
+    if "Answer Agent" not in selected:
+        selected.append("Answer Agent")
+    return selected
 
 
 def _fixed_supervisor_route(

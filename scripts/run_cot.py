@@ -49,7 +49,7 @@ def build_prediction_record(
     `prediction` 是抽取出的最终短答案。`reasoning_output` 保存模型完整回答，
     方便后续检查 CoT 到底帮助了还是伤害了结果。
     """
-    correct = exact_match(prediction, sample.answer)
+    correct = exact_match(prediction, sample.answer, question=sample.question)
     record = {
         "experiment_id": metadata["experiment_id"],
         "model": metadata["model"],
@@ -166,7 +166,7 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
         response = backend.generate(request)
         latency_ms = round((time.perf_counter() - start) * 1000, 3)
         # 指标只比较 `Final Answer:` 后面的短答案。
-        prediction = extract_final_answer(response.raw_output)
+        prediction = extract_final_answer(response.raw_output, question=sample.question)
 
         record = build_prediction_record(
             sample=sample,

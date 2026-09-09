@@ -8,6 +8,8 @@ Phase 3 同时支持两类 RAG：
 
 import re
 
+from medreason_agent.answer_normalization import canonical_short_answer
+
 KNOWLEDGE_RAG_V3 = """Answer the medical question using image and retrieved medical evidence.
 
 Question: {question}
@@ -36,7 +38,8 @@ evidence-conflicting claims.
 Unsupported Assumptions: list unsupported assumptions, or write None.
 Uncertainty: state uncertainty if the image or evidence is insufficient.
 Conclusion: provide the concise conclusion.
-Final Answer: provide only the short benchmark answer.
+Final Answer: provide only the short benchmark answer. For yes/no questions,
+answer exactly yes or no. For open questions, answer with one short phrase.
 
 Do not provide clinical advice. Do not claim a real clinical diagnosis."""
 
@@ -71,7 +74,8 @@ evidence-conflicting claims.
 Unsupported Assumptions: list unsupported assumptions, or write None.
 Uncertainty: state uncertainty if the image or knowledge is insufficient.
 Conclusion: provide the concise conclusion.
-Final Answer: provide only the short benchmark answer.
+Final Answer: provide only the short benchmark answer. For yes/no questions,
+answer exactly yes or no. For open questions, answer with one short phrase.
 
 Do not provide clinical advice. Do not claim a real clinical diagnosis."""
 
@@ -110,7 +114,8 @@ status as Verification Status.
 Unsupported Assumptions: list unsupported assumptions, or write None.
 Uncertainty: state uncertainty if the image or evidence is insufficient.
 Conclusion: provide the concise verified conclusion.
-Final Answer: provide only the short benchmark answer.
+Final Answer: provide only the short benchmark answer. For yes/no questions,
+answer exactly yes or no. For open questions, answer with one short phrase.
 
 Do not provide clinical advice. Do not claim a real clinical diagnosis."""
 
@@ -260,7 +265,7 @@ def extract_verification_status(output: str) -> str:
     return match.group("status").upper()
 
 
-def extract_final_answer(output: str) -> str:
+def extract_final_answer(output: str, question: str = "") -> str:
     """从 RAG 模型输出中抽取用于指标计算的最终短答案。
 
     `Final Answer:` 是首选字段。为了兼容模型只输出 `Conclusion:` 的情况，
@@ -270,7 +275,7 @@ def extract_final_answer(output: str) -> str:
     if not match:
         match = _CONCLUSION_PATTERN.search(output.strip())
     if not match:
-        return output.strip()
+        return canonical_short_answer(output.strip(), question=question)
 
     answer = match.group("answer").strip()
-    return answer.splitlines()[0].strip()
+    return canonical_short_answer(answer, question=question)

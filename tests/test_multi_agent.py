@@ -160,6 +160,21 @@ def test_supervisor_selected_tools_control_actual_route() -> None:
     assert result.prediction == "yes"
 
 
+def test_heuristic_question_routing_skips_rag_for_simple_closed_question() -> None:
+    result = SupervisorMultiAgent(
+        backend=MockVLMBackend(),
+        retrieval_pipeline=_retrieval_pipeline(),
+        dynamic_routing=True,
+        question_routing="heuristic",
+    ).run(_sample(), max_new_tokens=64)
+
+    assert result.selected_tools == ["Vision Agent", "Answer Agent"]
+    assert result.agent_route == ["supervisor_agent", "vision_agent", "answer_agent"]
+    assert result.retrieved_evidence == []
+    assert result.agent_outputs["reasoning"] == ""
+    assert result.agent_outputs["verifier"] == ""
+
+
 def test_answer_gate_forces_uncertain_for_unsupported_claim() -> None:
     result = SupervisorMultiAgent(
         backend=UnsupportedVerifierBackend(),

@@ -63,6 +63,7 @@ class Phase5VerificationAgent:
         dynamic_routing: bool = False,
         deterministic_answer_gate: bool = False,
         selective_verification: str = "all",
+        question_routing: str = "none",
     ) -> None:
         if verification_mode not in PHASE5_MODES:
             raise ValueError(f"Unsupported Phase 5 verification_mode: {verification_mode}")
@@ -76,6 +77,7 @@ class Phase5VerificationAgent:
             dynamic_routing=dynamic_routing,
             deterministic_answer_gate=deterministic_answer_gate,
             internal_verifier=False,
+            question_routing=question_routing,
         )
 
     def run(
@@ -161,7 +163,7 @@ class Phase5VerificationAgent:
                 ),
                 max_new_tokens,
             )
-            prediction = extract_final_answer(revision.raw_output)
+            prediction = extract_final_answer(revision.raw_output, question=sample.question)
 
         return Phase5VerificationResult(
             candidate=candidate,
@@ -224,7 +226,7 @@ class Phase5VerificationAgent:
                 ),
                 max_new_tokens,
             )
-            prediction = extract_final_answer(revision.raw_output)
+            prediction = extract_final_answer(revision.raw_output, question=sample.question)
 
         return Phase5VerificationResult(
             candidate=candidate,
@@ -284,7 +286,7 @@ class Phase5VerificationAgent:
                 ),
                 max_new_tokens,
             )
-            prediction = extract_final_answer(revision.raw_output)
+            prediction = extract_final_answer(revision.raw_output, question=sample.question)
 
         return Phase5VerificationResult(
             candidate=candidate,

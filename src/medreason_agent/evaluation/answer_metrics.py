@@ -10,6 +10,8 @@ import math
 import re
 from collections import Counter
 
+from medreason_agent.answer_normalization import canonical_short_answer
+
 _ARTICLES = {"a", "an", "the"}
 
 
@@ -19,18 +21,21 @@ def normalize_answer(answer: str) -> str:
     归一化会统一大小写、去掉标点、移除英文冠词。这样 `The lung.` 和 `lung`
     会被视为同一个答案，避免因为表面格式差异误判。
     """
-    text = answer.lower().strip()
+    text = _normalize_synonyms(canonical_short_answer(answer).lower().strip())
     text = re.sub(r"[^a-z0-9\s]", " ", text)
     tokens = [token for token in text.split() if token not in _ARTICLES]
     return " ".join(tokens)
 
 
-def exact_match(prediction: str, ground_truth: str) -> bool:
+def exact_match(prediction: str, ground_truth: str, question: str = "") -> bool:
     """判断预测答案和标准答案在归一化后是否完全一致。
 
     Exact match 是最严格的主指标之一，特别适合 yes/no 这类 closed questions。
     """
-    return normalize_answer(prediction) == normalize_answer(ground_truth)
+    normalized_prediction = normalize_answer(
+        canonical_short_answer(prediction, question=question),
+    )
+    return normalized_prediction == normalize_answer(ground_truth)
 
 
 def token_f1(prediction: str, ground_truth: str) -> float:
@@ -98,13 +103,34 @@ def summarize_answer_metrics(records: list[dict]) -> dict[str, float | int]:
         }
 
     exact_matches = [
-        exact_match(str(record["prediction"]), str(record["ground_truth"])) for record in records
+        exact_match(
+            canonical_short_answer(
+                str(record["prediction"]),
+                question=str(record.get("question", "")),
+            ),
+            str(record["ground_truth"]),
+        )
+        for record in records
     ]
     f1_scores = [
-        token_f1(str(record["prediction"]), str(record["ground_truth"])) for record in records
+        token_f1(
+            canonical_short_answer(
+                str(record["prediction"]),
+                question=str(record.get("question", "")),
+            ),
+            str(record["ground_truth"]),
+        )
+        for record in records
     ]
     bleu_scores = [
-        bleu_1(str(record["prediction"]), str(record["ground_truth"])) for record in records
+        bleu_1(
+            canonical_short_answer(
+                str(record["prediction"]),
+                question=str(record.get("question", "")),
+            ),
+            str(record["ground_truth"]),
+        )
+        for record in records
     ]
 
     return {
@@ -113,3 +139,19 @@ def summarize_answer_metrics(records: list[dict]) -> dict[str, float | int]:
         "mean_token_f1": sum(f1_scores) / total,
         "mean_bleu_1": sum(bleu_scores) / total,
     }
+
+
+def _normalize_synonyms(text: str) -> str:
+    """归一化常见医学短答案同义写法。"""
+    replacements = {
+        "cerebrospinal fluid": "csf",
+        "computed tomography": "ct",
+        "magnetic resonance imaging": "mri",
+        "x ray": "xray",
+        "x-ray": "xray",
+        "chest xray": "cxr",
+        "chest x ray": "cxr",
+    }
+    for source, target in replacements.items():
+        text = text.replace(source, target)
+    return text

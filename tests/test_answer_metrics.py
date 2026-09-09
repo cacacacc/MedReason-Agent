@@ -6,6 +6,14 @@ from medreason_agent.evaluation.answer_metrics import (
 )
 
 
+def test_exact_match_canonicalizes_yes_no_sentence() -> None:
+    assert exact_match(
+        "No, the trachea is not midline.",
+        "No",
+        question="Is the trachea midline?",
+    )
+
+
 def test_normalize_answer_lowercases_and_removes_articles() -> None:
     assert normalize_answer("The Right Lung.") == "right lung"
 

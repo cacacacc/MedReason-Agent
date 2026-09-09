@@ -121,8 +121,12 @@ def build_prediction_record(
 ) -> dict[str, Any]:
     """构造 Phase 5 prediction record。"""
     candidate = result.candidate
-    candidate_correct = exact_match(candidate.prediction, sample.answer)
-    final_correct = exact_match(result.prediction, sample.answer)
+    candidate_correct = exact_match(
+        candidate.prediction,
+        sample.answer,
+        question=sample.question,
+    )
+    final_correct = exact_match(result.prediction, sample.answer, question=sample.question)
     evidence_quality = score_evidence_quality(
         question=sample.question,
         ground_truth=sample.answer,
@@ -172,6 +176,7 @@ def build_prediction_record(
         "selective_verification": metadata["selective_verification"],
         "rag_mode": metadata.get("rag_mode", ""),
         "agent_mode": metadata["agent_mode"],
+        "question_routing": metadata.get("question_routing", "none"),
         "dataset": sample.dataset,
         "split": sample.split,
         "sample_id": sample.sample_id,
@@ -254,6 +259,10 @@ def is_current_record(record: dict[str, Any], method: dict[str, Any]) -> bool:
     return (
         record.get("prompt_version") == method["prompt_version"]
         and record.get("prompt_contract") == method["prompt_contract"]
+        and record.get("question_routing", "none") == method.get(
+            "question_routing",
+            "none",
+        )
         and record.get("record_protocol_version") == "phase5_candidate_post_verification_v3"
         and record.get("verification_mode") == method["verification_mode"]
         and "candidate_prediction" in record
@@ -292,6 +301,7 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
         dynamic_routing=bool(method.get("dynamic_routing", False)),
         deterministic_answer_gate=bool(method.get("deterministic_answer_gate", False)),
         selective_verification=str(method.get("selective_verification", "all")),
+        question_routing=str(method.get("question_routing", "none")),
     )
     samples = load_vqa_rad_split(
         split=dataset_config["split"],
@@ -333,6 +343,7 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
                 "prompt_contract": method["prompt_contract"],
                 "rag_mode": method.get("rag_mode", ""),
                 "agent_mode": method["agent_mode"],
+                "question_routing": method.get("question_routing", "none"),
                 "selective_verification": method.get("selective_verification", "all"),
                 "latency_ms": round((time.perf_counter() - start) * 1000, 3),
             },
@@ -358,6 +369,7 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
             "prompt_version": method["prompt_version"],
             "prompt_contract": method["prompt_contract"],
             "agent_mode": method["agent_mode"],
+            "question_routing": method.get("question_routing", "none"),
             "verification_mode": method["verification_mode"],
             "selective_verification": method.get("selective_verification", "all"),
             "rag_mode": method.get("rag_mode", ""),

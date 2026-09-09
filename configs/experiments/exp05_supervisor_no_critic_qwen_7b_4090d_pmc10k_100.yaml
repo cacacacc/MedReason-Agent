@@ -1,0 +1,50 @@
+experiment_id: exp05_supervisor_no_critic_qwen_7b_4090d_pmc10k_100
+name: Phase 5 Supervisor No Critic - Qwen 2.5 VL 7B 4090D PMC 10k 100 Samples
+phase: 5
+inherits: configs/base.yaml
+
+method:
+  type: verification
+  backend: qwen2_5_vl
+  model_id: /root/autodl-tmp/models/Qwen2.5-VL-7B-Instruct
+  torch_dtype: bfloat16
+  device_map: auto
+  prompt_version: phase5_process_verification_v2
+  prompt_contract: supervisor_candidate_no_post_critic_v1
+  agent_mode: supervisor_multi_agent
+  verification_mode: supervisor_no_critic
+  selective_verification: none
+  dynamic_routing: false
+  deterministic_answer_gate: false
+  rag_mode: supervised_retrieval_verification
+  training_epochs: 0
+
+dataset:
+  name: VQA-RAD
+  split: test
+  scale: tuning
+  max_samples: 100
+
+retrieval:
+  enabled: true
+  retriever: faiss
+  embedding_model: /root/autodl-tmp/models/bge-small-en-v1.5
+  index_path: Data/Processed/medical_kb/pmc_10k_bge_small.faiss
+  metadata_path: Data/Processed/medical_kb/pmc_10k_bge_small_metadata.jsonl
+  reranker: keyword_reranker
+  corpus_name: pmc_abstracts_10k
+  corpus_path: Data/Processed/medical_kb/pmc_10k_chunks.jsonl
+  candidate_top_k: 10
+  top_k: 5
+  min_rerank_score: 0.0
+  max_chars_per_evidence: 500
+
+generation:
+  temperature: 0.0
+  top_p: 1.0
+  max_new_tokens: 256
+
+outputs:
+  result_dir: Results/exp05_supervisor_no_critic_qwen_7b_4090d_pmc10k_100
+  prediction_file: predictions.jsonl
+  metrics_file: metrics.json

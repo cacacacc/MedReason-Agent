@@ -108,7 +108,7 @@ def build_prediction_record(
     metadata: dict[str, Any],
 ) -> dict[str, Any]:
     """构造 Phase 4 prediction record。"""
-    correct = exact_match(result.prediction, sample.answer)
+    correct = exact_match(result.prediction, sample.answer, question=sample.question)
     evidence_quality = score_evidence_quality(
         question=sample.question,
         ground_truth=sample.answer,
@@ -122,6 +122,7 @@ def build_prediction_record(
         "prompt_contract": metadata["prompt_contract"],
         "rag_mode": metadata.get("rag_mode", ""),
         "agent_mode": metadata["agent_mode"],
+        "question_routing": metadata.get("question_routing", "none"),
         "dataset": sample.dataset,
         "split": sample.split,
         "sample_id": sample.sample_id,
@@ -181,6 +182,10 @@ def is_current_record(record: dict[str, Any], method: dict[str, Any]) -> bool:
         record.get("prompt_version") == method["prompt_version"]
         and record.get("prompt_contract") == method["prompt_contract"]
         and record.get("agent_mode") == method["agent_mode"]
+        and record.get("question_routing", "none") == method.get(
+            "question_routing",
+            "none",
+        )
         and "agent_outputs" in record
         and "selected_tools" in record
         and "expected_selected_tools" in record
@@ -220,6 +225,7 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
         memory_store=memory_store,
         dynamic_routing=bool(method.get("dynamic_routing", False)),
         deterministic_answer_gate=bool(method.get("deterministic_answer_gate", False)),
+        question_routing=str(method.get("question_routing", "none")),
     )
     samples = load_vqa_rad_split(
         split=dataset_config["split"],
@@ -262,6 +268,7 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
                 "prompt_contract": method["prompt_contract"],
                 "rag_mode": method.get("rag_mode", ""),
                 "agent_mode": method["agent_mode"],
+                "question_routing": method.get("question_routing", "none"),
                 "latency_ms": latency_ms,
             },
         )
@@ -285,6 +292,7 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
             "prompt_version": method["prompt_version"],
             "prompt_contract": method["prompt_contract"],
             "agent_mode": method["agent_mode"],
+            "question_routing": method.get("question_routing", "none"),
             "rag_mode": method.get("rag_mode", ""),
             "retriever": retrieval_config.get("retriever"),
             "top_k": retrieval_config.get("top_k"),

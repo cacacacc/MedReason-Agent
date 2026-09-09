@@ -1,0 +1,35 @@
+experiment_id: exp04_fixed_multi_agent_qwen_7b_4090d_100
+name: Fixed Multi-Agent - Qwen 2.5 VL 7B 4090D 100 Samples
+phase: 4
+inherits: configs/base.yaml
+
+method:
+  type: multi_agent
+  backend: qwen2_5_vl
+  model_id: /root/autodl-tmp/models/Qwen2.5-VL-7B-Instruct
+  torch_dtype: bfloat16
+  device_map: auto
+  prompt_version: fixed_multi_agent_v1
+  prompt_contract: structured_fixed_agents_v1
+  agent_mode: fixed_multi_agent
+  rag_mode: none
+  training_epochs: 0
+
+dataset:
+  name: VQA-RAD
+  split: test
+  scale: tuning
+  max_samples: 100
+
+retrieval:
+  enabled: false
+
+generation:
+  temperature: 0.0
+  top_p: 1.0
+  max_new_tokens: 256
+
+outputs:
+  result_dir: Results/exp04_fixed_multi_agent_qwen_7b_4090d_100
+  prediction_file: predictions.jsonl
+  metrics_file: metrics.json

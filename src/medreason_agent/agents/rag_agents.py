@@ -198,7 +198,7 @@ class KnowledgeRAGAgent:
             )
         )
         return RAGAgentResult(
-            prediction=extract_final_answer(response.raw_output),
+            prediction=extract_final_answer(response.raw_output, question=sample.question),
             reasoning_output=response.raw_output,
             raw_output=response.raw_output,
             retrieved_evidence=trace.evidence_records,
@@ -247,7 +247,10 @@ class EvidenceRAGAgent:
                 max_new_tokens=max_new_tokens,
             )
         )
-        initial_prediction = extract_final_answer(initial_response.raw_output)
+        initial_prediction = extract_final_answer(
+            initial_response.raw_output,
+            question=sample.question,
+        )
         evidence_query = build_claim_verification_query(
             question=sample.question,
             claim=initial_prediction,
@@ -283,7 +286,10 @@ class EvidenceRAGAgent:
                 )
             ]
         return RAGAgentResult(
-            prediction=extract_final_answer(verification_response.raw_output),
+            prediction=extract_final_answer(
+                verification_response.raw_output,
+                question=sample.question,
+            ),
             reasoning_output=verification_response.raw_output,
             raw_output=verification_response.raw_output,
             retrieved_evidence=trace.evidence_records,
@@ -366,7 +372,10 @@ class KnowledgeThenEvidenceRAGAgent:
             )
         )
         generated_claims = extract_claims(initial_response.raw_output)
-        initial_prediction = extract_final_answer(initial_response.raw_output)
+        initial_prediction = extract_final_answer(
+            initial_response.raw_output,
+            question=sample.question,
+        )
         claim = generated_claims[0] if generated_claims else initial_prediction
         evidence_query = build_claim_verification_query(
             question=sample.question,
@@ -421,7 +430,10 @@ class KnowledgeThenEvidenceRAGAgent:
             stage="claim_verification",
         )
         return RAGAgentResult(
-            prediction=extract_final_answer(verification_response.raw_output),
+            prediction=extract_final_answer(
+                verification_response.raw_output,
+                question=sample.question,
+            ),
             reasoning_output=verification_response.raw_output,
             raw_output=verification_response.raw_output,
             retrieved_evidence=[*knowledge_evidence, *verification_evidence],

@@ -10,7 +10,10 @@ DIRECT_V1 = """Answer the medical question based on the image.
 
 Question: {question}
 
-Return only the short final answer. Do not provide clinical advice."""
+Return only the short final answer.
+For yes/no questions, answer exactly yes or no.
+For open questions, answer with one short phrase, not a sentence.
+Do not provide clinical advice."""
 
 
 def build_direct_prompt(question: str) -> str:

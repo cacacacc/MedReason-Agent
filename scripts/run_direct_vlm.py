@@ -20,6 +20,7 @@ from typing import Any
 import yaml
 from tqdm import tqdm
 
+from medreason_agent.answer_normalization import canonical_short_answer
 from medreason_agent.data.vqa_rad import VQARADSample, load_vqa_rad_split
 from medreason_agent.evaluation.answer_metrics import exact_match, summarize_answer_metrics
 from medreason_agent.evaluation.error_attribution import (
@@ -54,7 +55,8 @@ def build_prediction_record(
     `reasoning_output`、`retrieved_evidence`、`agent_route` 等字段，
     这样所有实验输出都能保持可比。
     """
-    correct = exact_match(response_answer, sample.answer)
+    prediction = canonical_short_answer(response_answer, question=sample.question)
+    correct = exact_match(prediction, sample.answer, question=sample.question)
     record = {
         "experiment_id": metadata["experiment_id"],
         "model": metadata["model"],
@@ -66,7 +68,7 @@ def build_prediction_record(
         "image_id": sample.image_id,
         "image_path": sample.image_path,
         "question": sample.question,
-        "prediction": response_answer,
+        "prediction": prediction,
         "ground_truth": sample.answer,
         "answer_type": sample.answer_type,
         "question_type": sample.question_type,

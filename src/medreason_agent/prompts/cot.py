@@ -6,6 +6,8 @@ Phase 2 保持同一个 frozen VLM 和同一个数据划分，只改变 prompt �
 
 import re
 
+from medreason_agent.answer_normalization import canonical_short_answer
+
 # Vanilla CoT 只给出自然语言 step-by-step 指令，不强制 Observation / Reasoning 分段。
 # 它用于回答“普通显式推理是否有帮助”。
 VANILLA_COT_V1 = """Answer the medical question based on the image.
@@ -15,7 +17,8 @@ Question: {question}
 Think step by step, then provide the final short answer.
 
 Use this final line:
-Final Answer: provide only the short final answer.
+Final Answer: provide only the short final answer. For yes/no questions,
+answer exactly yes or no. For open questions, answer with one short phrase.
 
 Do not provide clinical advice."""
 
@@ -30,7 +33,8 @@ Use the following format:
 
 Observation: describe only visual findings that are visible in the image.
 Reasoning: explain how the visual findings relate to the question.
-Final Answer: provide only the short final answer.
+Final Answer: provide only the short final answer. For yes/no questions,
+answer exactly yes or no. For open questions, answer with one short phrase.
 
 Do not provide clinical advice."""
 
@@ -50,7 +54,7 @@ def build_cot_prompt(question: str, prompt_style: str = "structured") -> str:
     raise ValueError(f"Unsupported CoT prompt_style: {prompt_style}")
 
 
-def extract_final_answer(output: str) -> str:
+def extract_final_answer(output: str, question: str = "") -> str:
     """抽取用于指标计算的短答案。
 
     CoT 完整输出适合做推理分析，但 exact match 等答案指标应该只比较最终答案和
@@ -60,8 +64,7 @@ def extract_final_answer(output: str) -> str:
     if not match:
         # 如果模型在早期 smoke test 中没有遵守格式，就退回使用原始输出，
         # 这样 runner 不会因为格式问题直接崩掉。
-        return output.strip()
+        return canonical_short_answer(output.strip(), question=question)
 
     answer = match.group("answer").strip()
-    first_line = answer.splitlines()[0].strip()
-    return first_line
+    return canonical_short_answer(answer, question=question)

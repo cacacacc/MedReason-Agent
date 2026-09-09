@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import re
 
+from medreason_agent.answer_normalization import canonical_short_answer
+
 VISION_AGENT_V1 = """Act as a medical image specialist.
 
 Question: {question}
@@ -42,7 +44,8 @@ Claim Statuses: write JSON objects, one per line. Use OBSERVED for visible
 findings, SUPPORTED for evidence-backed facts, HYPOTHESIS for possible
 conclusions, UNSUPPORTED for unsupported claims, and CONTRADICTED for
 evidence-conflicting claims. Do not treat HYPOTHESIS as fact.
-Preliminary Answer: provide a short answer candidate.
+Preliminary Answer: provide a short answer candidate. For yes/no questions,
+answer exactly yes or no. For open questions, answer with one short phrase.
 Unsupported Assumptions: list unsupported assumptions, or write None.
 
 Do not provide clinical advice."""
@@ -92,7 +95,8 @@ Critic Output:
 Use exactly this format:
 
 Conclusion: provide the concise benchmark conclusion.
-Final Answer: provide only the short benchmark answer.
+Final Answer: provide only the short benchmark answer. For yes/no questions,
+answer exactly yes or no. For open questions, answer with one short phrase.
 
 Do not provide clinical advice. Do not claim a real clinical diagnosis."""
 
@@ -242,13 +246,13 @@ def build_verifier_prompt(
     )
 
 
-def extract_final_answer(output: str) -> str:
+def extract_final_answer(output: str, question: str = "") -> str:
     """从 Answer Agent 或 Reasoning Agent 输出中抽取短答案。"""
     stripped = output.strip()
     match = _FINAL_ANSWER_PATTERN.search(stripped) or _PRELIMINARY_ANSWER_PATTERN.search(stripped)
     if not match:
-        return stripped
-    return match.group("answer").strip().splitlines()[0].strip()
+        return canonical_short_answer(stripped, question=question)
+    return canonical_short_answer(match.group("answer"), question=question)
 
 
 def extract_critic_decision(output: str) -> str:
