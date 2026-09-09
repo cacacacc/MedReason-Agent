@@ -1,113 +1,123 @@
-# Phase 2：Chain-of-Thought Reasoning
+# Phase 2：Reasoning Baseline
 
 ## Phase Goal
 
-本阶段研究显式推理是否能提升医学多模态问答。实验形式是：
+本阶段研究显式推理是否能提升医学多模态问答。
+
+核心问题：
 
 ```text
-Image + Question -> VLM -> Reasoning -> Final Answer
+Reasoning 有没有帮助？
+结构化 reasoning 是否比普通 step-by-step 更稳定？
 ```
 
-核心比较：
+## 实验组
+
+Phase 2 现在固定比较三种方式：
 
 ```text
-Direct Answer vs CoT Prompt
+Direct
+Image + Question -> VLM -> Answer
 ```
-
-## Why
-
-Direct VLM 直接输出答案，速度快，但我们看不到模型为什么这样回答。CoT 让模型先写出推理过程，再输出最终答案。这样可能帮助模型处理复杂问题，也可能因为写了错误推理而把答案带偏。
-
-因此 Phase 2 不能只问“CoT 准确率是否更高”，还要问：
-
-- 哪些问题 CoT 改对了？
-- 哪些问题 CoT 改错了？
-- CoT 的额外 token 和 latency 是否值得？
-
-## Theory
-
-`Chain-of-Thought`
-
-Chain-of-Thought，简称 CoT，意思是“思维链”。它让模型在给最终答案前先生成中间推理步骤。
-
-通俗解释：不是让学生直接写答案，而是要求他写出解题过程。
-
-本项目例子：模型先描述图像观察，再说明如何从观察推到答案，最后输出 `Final Answer`。
-
-为什么需要它：医学 VQA 中有些问题不是简单识别物体，而是需要把图像线索和医学知识连接起来。CoT 可能帮助模型显式组织这些线索。
-
-## Files
 
 ```text
-CREATE
-Docs/phase2_cot_reasoning.md
-src/medreason_agent/prompts/cot.py
-src/medreason_agent/analysis/__init__.py
-src/medreason_agent/analysis/compare_predictions.py
-scripts/run_cot.py
-scripts/compare_direct_vs_cot.py
-configs/experiments/exp02_cot.yaml
-configs/experiments/exp02_cot_qwen_smoke.yaml
-tests/test_cot_prompt.py
-tests/test_compare_predictions.py
-
-MODIFY
-src/medreason_agent/models/vlm.py
-README.md
-
-DELETE
-无
+Vanilla CoT
+Image + Question -> VLM -> Think step by step -> Final Answer
 ```
-
-## Tasks
-
-1. 新增 CoT prompt。
-2. 让 VLM 输出 `Observation / Reasoning / Final Answer`。
-3. 从模型完整输出中提取最终答案。
-4. 保存完整 reasoning output。
-5. 计算 Accuracy / Token F1 / BLEU-1。
-6. 对比 Direct 和 CoT 的逐题结果。
-
-## Experiments
-
-Smoke test：
 
 ```text
-exp02_cot
-backend: mock
-split: test
-max_samples: 20
+Structured CoT
+Image + Question -> VLM -> Observation -> Reasoning -> Final Answer
 ```
 
-真实 Qwen CPU smoke：
+注意：旧的 `exp02_cot*` 实际是 Structured CoT，因为 prompt 强制输出
+`Observation / Reasoning / Final Answer`。Vanilla CoT 是本次新增的独立实验组。
+
+## Prompt 区别
+
+Vanilla CoT：
 
 ```text
-exp02_cot_qwen_smoke
-backend: qwen2_5_vl
-split: test
-max_samples: 1
+Think step by step, then provide the final short answer.
+Final Answer: ...
 ```
 
-## Dataset Scale
+Structured CoT：
 
 ```text
-Smoke Test: 20 samples
-Dev Experiment: 100-200 samples
-Full Experiment: 451 test samples
+Observation: describe only visual findings visible in the image.
+Reasoning: explain how visual findings relate to the question.
+Final Answer: provide only the short final answer.
 ```
 
-CPU 上跑真实 Qwen 时先从 1 条样本开始。
+两者都保留完整 `reasoning_output`，但指标只评估 `Final Answer:` 后的短答案。
 
-## Pass Criteria
+## 4090D 运行顺序
 
-- CoT runner 能生成 `predictions.jsonl` 和 `metrics.json`。
-- 每条记录保留完整 `reasoning_output`。
-- 能从 `Final Answer:` 中提取用于评估的短答案。
-- Direct vs CoT comparison 能输出 helped / hurt / both correct / both wrong。
-- pytest 和 ruff 全部通过。
+先跑 20 条：
 
-## Research Questions
+```bash
+python scripts/run_direct_vlm.py --config configs/experiments/exp01_direct_vlm_qwen_7b_cuda_20.yaml
+python scripts/run_cot.py --config configs/experiments/exp02_vanilla_cot_qwen_7b_4090d_20.yaml
+python scripts/run_cot.py --config configs/experiments/exp02_structured_cot_qwen_7b_4090d_20.yaml
+```
 
-1. 为什么 CoT 可能提升复杂问题表现？
-2. 为什么 CoT 也可能降低准确率？
-3. 为什么我们必须单独保存 `reasoning_output`，而不是只保存最终答案？
+20 条稳定后跑 full：
+
+```bash
+python scripts/run_direct_vlm.py --config configs/experiments/exp01_direct_vlm_qwen_7b_cuda_full.yaml
+python scripts/run_cot.py --config configs/experiments/exp02_vanilla_cot_qwen_7b_4090d_full.yaml
+python scripts/run_cot.py --config configs/experiments/exp02_structured_cot_qwen_7b_4090d_full.yaml
+```
+
+## 对比分析
+
+Direct vs Vanilla：
+
+```bash
+python scripts/compare_direct_vs_cot.py \
+  --direct Results/exp01_direct_vlm_qwen_7b_cuda_full/predictions.jsonl \
+  --cot Results/exp02_vanilla_cot_qwen_7b_4090d_full/predictions.jsonl \
+  --output Results/compare_direct_vs_vanilla_cot_qwen_7b_4090d_full
+```
+
+Direct vs Structured：
+
+```bash
+python scripts/compare_direct_vs_cot.py \
+  --direct Results/exp01_direct_vlm_qwen_7b_cuda_full/predictions.jsonl \
+  --cot Results/exp02_structured_cot_qwen_7b_4090d_full/predictions.jsonl \
+  --output Results/compare_direct_vs_structured_cot_qwen_7b_4090d_full
+```
+
+如果要比较 Vanilla vs Structured，可以把 `--direct` 临时理解成 baseline：
+
+```bash
+python scripts/compare_direct_vs_cot.py \
+  --direct Results/exp02_vanilla_cot_qwen_7b_4090d_full/predictions.jsonl \
+  --cot Results/exp02_structured_cot_qwen_7b_4090d_full/predictions.jsonl \
+  --output Results/compare_vanilla_vs_structured_cot_qwen_7b_4090d_full
+```
+
+## 主要指标
+
+```text
+Accuracy
+Token F1
+BLEU-1
+Latency
+Input Tokens
+Output Tokens
+cot_helped
+cot_hurt
+both_correct
+both_wrong
+```
+
+## 结果解释
+
+如果 Vanilla CoT 高于 Direct，说明普通显式推理本身有帮助。
+
+如果 Structured CoT 高于 Vanilla CoT，说明对医学 VQA 来说，把视觉观察和推理过程分开更可靠。
+
+如果 Structured CoT 低于 Vanilla CoT，优先检查是否出现了错误 observation 或过度推理。Structured prompt 会让模型写更多内容，也可能放大错误链条。

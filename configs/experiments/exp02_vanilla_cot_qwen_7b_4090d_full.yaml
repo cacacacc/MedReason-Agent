@@ -1,0 +1,31 @@
+experiment_id: exp02_vanilla_cot_qwen_7b_4090d_full
+name: Phase 2 Vanilla CoT - Qwen 2.5 VL 7B 4090D Full Test
+phase: 2
+inherits: configs/base.yaml
+
+method:
+  type: cot_vlm
+  backend: qwen2_5_vl
+  model_id: /root/autodl-tmp/models/Qwen2.5-VL-7B-Instruct
+  torch_dtype: bfloat16
+  device_map: auto
+  prompt_version: cot_vanilla_v1
+  prompt_style: vanilla
+  prompt_contract: vanilla_step_by_step_final_answer_v1
+  training_epochs: 0
+
+dataset:
+  name: VQA-RAD
+  split: test
+  scale: full
+  max_samples: null
+
+generation:
+  temperature: 0.0
+  top_p: 1.0
+  max_new_tokens: 256
+
+outputs:
+  result_dir: Results/exp02_vanilla_cot_qwen_7b_4090d_full
+  prediction_file: predictions.jsonl
+  metrics_file: metrics.json

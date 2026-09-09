@@ -6,9 +6,23 @@ Phase 2 保持同一个 frozen VLM 和同一个数据划分，只改变 prompt �
 
 import re
 
-# 下面的格式标记属于实验协议。`Final Answer:` 尤其重要：
-# evaluator 只抽取这个短答案计算 accuracy，完整文本会保存到 `reasoning_output`。
-COT_V1 = """Answer the medical question based on the image.
+# Vanilla CoT 只给出自然语言 step-by-step 指令，不强制 Observation / Reasoning 分段。
+# 它用于回答“普通显式推理是否有帮助”。
+VANILLA_COT_V1 = """Answer the medical question based on the image.
+
+Question: {question}
+
+Think step by step, then provide the final short answer.
+
+Use this final line:
+Final Answer: provide only the short final answer.
+
+Do not provide clinical advice."""
+
+
+# Structured CoT 固定 Observation / Reasoning / Final Answer 段落。
+# evaluator 只抽取 `Final Answer:` 后面的短答案计算 accuracy。
+STRUCTURED_COT_V1 = """Answer the medical question based on the image.
 
 Question: {question}
 
@@ -27,9 +41,13 @@ _FINAL_ANSWER_PATTERN = re.compile(
 )
 
 
-def build_cot_prompt(question: str) -> str:
+def build_cot_prompt(question: str, prompt_style: str = "structured") -> str:
     """为一条 VQA-RAD 问题构造 CoT prompt。"""
-    return COT_V1.format(question=question)
+    if prompt_style == "vanilla":
+        return VANILLA_COT_V1.format(question=question)
+    if prompt_style == "structured":
+        return STRUCTURED_COT_V1.format(question=question)
+    raise ValueError(f"Unsupported CoT prompt_style: {prompt_style}")
 
 
 def extract_final_answer(output: str) -> str:

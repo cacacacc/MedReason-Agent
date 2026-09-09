@@ -55,6 +55,8 @@ def build_prediction_record(
         "model": metadata["model"],
         "backend": metadata["backend"],
         "prompt_version": metadata["prompt_version"],
+        "prompt_style": metadata["prompt_style"],
+        "prompt_contract": metadata["prompt_contract"],
         "dataset": sample.dataset,
         "split": sample.split,
         "sample_id": sample.sample_id,
@@ -97,6 +99,11 @@ def is_current_record(record: dict[str, Any], method: dict[str, Any]) -> bool:
     """判断已有 CoT record 是否符合当前输出协议。"""
     return (
         record.get("prompt_version") == method["prompt_version"]
+        and record.get("prompt_style", "structured") == method.get(
+            "prompt_style",
+            "structured",
+        )
+        and record.get("prompt_contract", "") == method.get("prompt_contract", "")
         and "error_attribution" in record
     )
 
@@ -144,7 +151,8 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
     for sample in tqdm(missing_samples, desc=config["experiment_id"], ascii=True):
         # Phase 2 要求模型在最终答案前暴露中间推理。
         # 这就是本阶段要研究的实验变量。
-        prompt = build_cot_prompt(sample.question)
+        prompt_style = str(method.get("prompt_style", "structured"))
+        prompt = build_cot_prompt(sample.question, prompt_style=prompt_style)
         request = VLMRequest(
             image_path=str(sample.absolute_image_path),
             question=sample.question,
@@ -169,6 +177,8 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
                 "model": backend.model_name,
                 "backend": backend.backend_name,
                 "prompt_version": method["prompt_version"],
+                "prompt_style": prompt_style,
+                "prompt_contract": method.get("prompt_contract", ""),
                 "confidence": response.confidence,
                 "latency_ms": latency_ms,
                 "input_tokens": response.input_tokens,
@@ -190,6 +200,9 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
             "model": backend.model_name,
             "split": dataset_config["split"],
             "scale": dataset_config["scale"],
+            "prompt_version": method["prompt_version"],
+            "prompt_style": method.get("prompt_style", "structured"),
+            "prompt_contract": method.get("prompt_contract", ""),
             "is_valid_main_result": backend.backend_name != "mock",
             "prediction_file": str(prediction_path.relative_to(resolve_project_path("."))),
         }
