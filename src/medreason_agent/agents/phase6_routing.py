@@ -35,7 +35,10 @@ class RoutingDecision:
         return asdict(self)
 
 
-def decide_rule_based_route(sample: VQARADSample) -> RoutingDecision:
+def decide_rule_based_route(
+    sample: VQARADSample,
+    policy: str = "rule_based_v1",
+) -> RoutingDecision:
     """根据 VQA-RAD 元数据和问题文本选择 reasoning depth。
 
     规则只使用推理前可得信息，避免偷看模型输出或 ground truth：
@@ -43,6 +46,11 @@ def decide_rule_based_route(sample: VQARADSample) -> RoutingDecision:
     - MEDIUM：需要位置、大小、属性等轻量视觉推理，使用 Structured CoT。
     - HIGH：诊断、异常、病因、开放医学知识问题，使用完整 Multi-Agent。
     """
+    if policy == "rule_based_v2":
+        return decide_rule_based_route_v2(sample)
+    if policy != "rule_based_v1":
+        raise ValueError(f"Unsupported Phase 6 routing policy: {policy}")
+
     question_type = sample.question_type.upper()
     answer_type = sample.answer_type.upper()
     question = sample.question.lower()
@@ -96,6 +104,106 @@ def decide_rule_based_route(sample: VQARADSample) -> RoutingDecision:
             "question_type": question_type,
             "matched_markers": markers,
         },
+    )
+
+
+def decide_rule_based_route_v2(sample: VQARADSample) -> RoutingDecision:
+    """Phase6 v2 路由规则。
+
+    v1 的主要问题是把所有 OPEN question 都送入 HIGH，导致 Full Multi-Agent route
+    占比过高且 accuracy 很低。v2 更保守地调用完整 Multi-Agent：
+    - 只有明确诊断、病因、鉴别诊断、疾病解释类问题进入 HIGH。
+    - 解剖结构、成像方式、平面、位置、大小、属性、简单异常描述更多进入 MEDIUM。
+    - 简单 closed visual question 继续走 LOW。
+    """
+    question_type = sample.question_type.upper()
+    answer_type = sample.answer_type.upper()
+    question = sample.question.lower()
+    markers = _matched_markers(question)
+    strong_markers = _matched_strong_medical_markers(question)
+    weak_visual_markers = _matched_visual_description_markers(question)
+
+    if strong_markers:
+        return _decision(
+            route=HIGH_ROUTE,
+            complexity="HIGH",
+            confidence_signal="LOW",
+            uncertainty_signal="HIGH",
+            evidence_support_signal="NEEDED",
+            reason="explicit diagnosis, disease, etiology, or differential reasoning trigger",
+            sample=sample,
+            matched_markers=markers,
+            strong_markers=strong_markers,
+            weak_visual_markers=weak_visual_markers,
+        )
+
+    if _is_low_complexity(sample):
+        return _decision(
+            route=LOW_ROUTE,
+            complexity="LOW",
+            confidence_signal="HIGH",
+            uncertainty_signal="LOW",
+            evidence_support_signal="NOT_REQUIRED",
+            reason="closed visual recognition question",
+            sample=sample,
+            matched_markers=markers,
+            strong_markers=strong_markers,
+            weak_visual_markers=weak_visual_markers,
+        )
+
+    if question_type in {"POS", "SIZE", "ATTRIB", "ORGAN", "MODALITY", "PLANE", "COUNT"}:
+        return _decision(
+            route=MEDIUM_ROUTE,
+            complexity="MEDIUM",
+            confidence_signal="MEDIUM",
+            uncertainty_signal="MEDIUM",
+            evidence_support_signal="OPTIONAL",
+            reason="visual reasoning or visual-description question",
+            sample=sample,
+            matched_markers=markers,
+            strong_markers=strong_markers,
+            weak_visual_markers=weak_visual_markers,
+        )
+
+    if answer_type == "OPEN" and (weak_visual_markers or question_type in {"ABN", "OTHER"}):
+        return _decision(
+            route=MEDIUM_ROUTE,
+            complexity="MEDIUM",
+            confidence_signal="MEDIUM",
+            uncertainty_signal="MEDIUM",
+            evidence_support_signal="OPTIONAL",
+            reason="open visual description without strong external-knowledge trigger",
+            sample=sample,
+            matched_markers=markers,
+            strong_markers=strong_markers,
+            weak_visual_markers=weak_visual_markers,
+        )
+
+    if question_type in {"ABN", "OTHER"}:
+        return _decision(
+            route=HIGH_ROUTE,
+            complexity="HIGH",
+            confidence_signal="LOW",
+            uncertainty_signal="HIGH",
+            evidence_support_signal="NEEDED",
+            reason="ambiguous abnormality or other medical question",
+            sample=sample,
+            matched_markers=markers,
+            strong_markers=strong_markers,
+            weak_visual_markers=weak_visual_markers,
+        )
+
+    return _decision(
+        route=MEDIUM_ROUTE,
+        complexity="MEDIUM",
+        confidence_signal="MEDIUM",
+        uncertainty_signal="MEDIUM",
+        evidence_support_signal="OPTIONAL",
+        reason="default v2 route avoids full multi-agent unless high-risk markers appear",
+        sample=sample,
+        matched_markers=markers,
+        strong_markers=strong_markers,
+        weak_visual_markers=weak_visual_markers,
     )
 
 
@@ -174,3 +282,77 @@ def _matched_markers(question: str) -> list[str]:
         "differential",
     )
     return [marker for marker in markers if marker in question]
+
+
+def _matched_strong_medical_markers(question: str) -> list[str]:
+    """匹配真正需要外部医学知识的强触发词。"""
+    markers = (
+        "diagnosis",
+        "diagnostic",
+        "disease",
+        "cause",
+        "caused by",
+        "etiology",
+        "differential",
+        "compatible",
+        "consistent with",
+        "suggest pneumonia",
+        "suggest malignancy",
+        "pathology",
+    )
+    return [marker for marker in markers if marker in question]
+
+
+def _matched_visual_description_markers(question: str) -> list[str]:
+    """匹配更像视觉描述、而不是外部知识推理的问题。"""
+    markers = (
+        "what is seen",
+        "what is shown",
+        "what structure",
+        "which organ",
+        "where",
+        "location",
+        "located",
+        "size",
+        "large",
+        "small",
+        "opacity",
+        "abnormality",
+        "abnormal",
+        "normal",
+        "modality",
+        "plane",
+        "view",
+    )
+    return [marker for marker in markers if marker in question]
+
+
+def _decision(
+    route: str,
+    complexity: str,
+    confidence_signal: str,
+    uncertainty_signal: str,
+    evidence_support_signal: str,
+    reason: str,
+    sample: VQARADSample,
+    matched_markers: list[str],
+    strong_markers: list[str],
+    weak_visual_markers: list[str],
+) -> RoutingDecision:
+    """统一构造 v2 routing decision，避免每条规则漏字段。"""
+    return RoutingDecision(
+        route=route,
+        complexity=complexity,
+        confidence_signal=confidence_signal,
+        uncertainty_signal=uncertainty_signal,
+        evidence_support_signal=evidence_support_signal,
+        agent_agreement_signal="UNKNOWN_PRE_ROUTE",
+        reason=reason,
+        signals={
+            "answer_type": sample.answer_type.upper(),
+            "question_type": sample.question_type.upper(),
+            "matched_markers": matched_markers,
+            "strong_medical_markers": strong_markers,
+            "weak_visual_markers": weak_visual_markers,
+        },
+    )

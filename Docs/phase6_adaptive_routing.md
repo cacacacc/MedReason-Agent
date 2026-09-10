@@ -127,3 +127,59 @@ Phase 6 因此把重点放到：
 什么时候不要调用复杂 agent
 什么时候才值得调用 RAG / Verifier
 ```
+
+## v2 路由优化
+
+100 条 v1 tuning 结果显示：
+
+```text
+Direct route: 39 samples, 56.41%
+Structured CoT route: 13 samples, 76.92%
+Full Multi-Agent route: 48 samples, 22.92%
+```
+
+这说明 v1 的主要问题不是 adaptive routing 方向错，而是 HIGH 路由太多。尤其是 v1 把
+所有 OPEN question 都直接送入 Full Multi-Agent，导致完整 agent 链路拖低整体 accuracy。
+
+v2 做了三点修改：
+
+```text
+1. 不再把所有 OPEN question 直接判为 HIGH。
+2. OPEN + visual description / anatomy / location / abnormality description -> MEDIUM。
+3. 只有 diagnosis / disease / cause / etiology / differential / compatible / consistent with
+   这类强医学知识触发词才进入 HIGH。
+```
+
+v2 的目标路由分布是：
+
+```text
+LOW: 35%-45%
+MEDIUM: 25%-40%
+HIGH: 20%-30%
+```
+
+同时，v2 修复了 Direct / Structured CoT 路线的最小 shared state 记录。它们不使用完整
+Multi-Agent shared state，但会写入兼容字段，避免 error attribution 把正常的 Direct/CoT
+路线误判为 State Error。
+
+v2 100 条指令：
+
+```bash
+python scripts/run_phase6_adaptive_routing.py --config configs/experiments/exp06_rule_based_adaptive_routing_v2_qwen_7b_4090d_pmc10k_100.yaml
+```
+
+v2 full 指令：
+
+```bash
+python scripts/run_phase6_adaptive_routing.py --config configs/experiments/exp06_rule_based_adaptive_routing_v2_qwen_7b_4090d_pmc10k_full.yaml
+```
+
+v2 是否进入 full 的判断标准：
+
+```text
+accuracy >= 43%
+HIGH route 占比低于 v1
+Full Multi-Agent route accuracy 不再明显拖低整体结果
+State Error 明显下降
+mean_agent_calls 不高于 v1
+```

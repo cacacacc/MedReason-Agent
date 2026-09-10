@@ -76,3 +76,33 @@ def test_phase6_fallback_only_on_clear_uncertainty() -> None:
     assert reason == "explicit_uncertainty_prediction"
     assert should_keep is False
     assert keep_reason == "no_fallback_signal"
+
+
+def test_rule_based_v2_routes_open_visual_description_to_cot() -> None:
+    decision = decide_rule_based_route(
+        _sample(
+            question="What abnormality is seen in the chest?",
+            answer_type="OPEN",
+            question_type="ABN",
+        ),
+        policy="rule_based_v2",
+    )
+
+    assert decision.route == MEDIUM_ROUTE
+    assert decision.complexity == "MEDIUM"
+    assert "abnormality" in decision.signals["weak_visual_markers"]
+
+
+def test_rule_based_v2_keeps_strong_diagnostic_question_high() -> None:
+    decision = decide_rule_based_route(
+        _sample(
+            question="What diagnosis is most consistent with this finding?",
+            answer_type="OPEN",
+            question_type="OTHER",
+        ),
+        policy="rule_based_v2",
+    )
+
+    assert decision.route == HIGH_ROUTE
+    assert decision.complexity == "HIGH"
+    assert "diagnosis" in decision.signals["strong_medical_markers"]

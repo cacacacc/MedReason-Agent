@@ -141,7 +141,10 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
 
     for sample in tqdm(missing_samples, desc=config["experiment_id"], ascii=True):
         start = time.perf_counter()
-        routing_decision = decide_rule_based_route(sample)
+        routing_decision = decide_rule_based_route(
+            sample,
+            policy=str(method.get("routing_policy", "rule_based_v1")),
+        )
         route_result = execute_route(
             sample=sample,
             route=routing_decision.route,
@@ -271,6 +274,7 @@ def execute_direct_route(
         route=LOW_ROUTE,
         response=response,
         prediction=prediction,
+        question=sample.question,
         agent_route=["direct_vlm"],
         tool_calls=[{"tool": "vlm_generate", "stage": "direct_vlm"}],
     )
@@ -295,6 +299,7 @@ def execute_structured_cot_route(
         route=MEDIUM_ROUTE,
         response=response,
         prediction=prediction,
+        question=sample.question,
         agent_route=["cot_vlm"],
         tool_calls=[{"tool": "vlm_generate", "stage": "cot_vlm"}],
         reasoning_output=response.raw_output,
@@ -345,11 +350,35 @@ def route_result_from_response(
     route: str,
     response: VLMResponse,
     prediction: str,
+    question: str,
     agent_route: list[str],
     tool_calls: list[dict],
     reasoning_output: str = "",
 ) -> dict[str, Any]:
     """把 Direct / CoT 输出规整为和 Multi-Agent 兼容的 record 字段。"""
+    stage = agent_route[0] if agent_route else route
+    shared_state = {
+        "question": question,
+        "messages": [
+            {
+                "agent": stage,
+                "content": response.raw_output,
+            }
+        ],
+        "retrieved_evidence": [],
+        "claim_statuses": [],
+        "selected_tools": [],
+        "compressed_context": (
+            f"Question Route: {route}\n"
+            f"Agent Output ({stage}): {response.raw_output}"
+        ),
+        "state_compression": {
+            "method": "phase6_single_route_minimal_state_v1",
+            "original_chars": len(response.raw_output),
+            "compressed_chars": len(response.raw_output),
+            "compression_ratio": 1.0,
+        },
+    }
     return {
         "route": route,
         "prediction": prediction,
@@ -360,9 +389,9 @@ def route_result_from_response(
         "generated_claims": [],
         "claim_statuses": [],
         "claim_verification_status": "",
-        "agent_outputs": {},
-        "shared_state": {},
-        "state_compression": {},
+        "agent_outputs": {stage: response.raw_output},
+        "shared_state": shared_state,
+        "state_compression": shared_state["state_compression"],
         "memory_records": [],
         "memory_write_record": None,
         "selected_tools": [],
