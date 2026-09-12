@@ -385,6 +385,100 @@ State Error = 0
 mean agent calls 接近或低于 v2 的 2.4，最多不超过 v1 的 5.8
 ```
 
+## 当前 v3 100 条结果
+
+实验：
+
+```text
+Experiment: exp06_rule_based_adaptive_routing_v3_qwen_7b_4090d_pmc10k_100
+Samples: 100
+Model: /root/autodl-tmp/models/Qwen2.5-VL-7B-Instruct
+Backend: qwen2_5_vl
+Embedding / retrieval: FAISS + PMC 10k
+Routing policy: rule_based_v3
+```
+
+主要指标：
+
+| Metric | Value |
+|---|---:|
+| Accuracy | 45.00% |
+| Correct | 45 / 100 |
+| Mean evidence quality | 0.1347 |
+| Evidence empty rate | 82.00% |
+| Mean agent calls | 2.8 |
+| Mean latency | 2.94 s |
+| Fallback count | 0 |
+| State Error | 0 |
+
+v3 路由分布：
+
+```text
+LOW / Direct: 53 samples
+MEDIUM / Structured CoT: 29 samples
+HIGH / Full Multi-Agent: 18 samples
+```
+
+各路线内部表现：
+
+| Route | Samples | Correct | Accuracy | Mean Latency | Mean Agent Calls |
+|---|---:|---:|---:|---:|---:|
+| Direct | 53 | 25 | 47.17% | 0.42 s | 1.0 |
+| Structured CoT | 29 | 12 | 41.38% | 1.75 s | 1.0 |
+| Full Multi-Agent | 18 | 8 | 44.44% | 12.24 s | 11.0 |
+
+v3 相比 v1 / v2：
+
+| Metric | v1 | v2 | v3 |
+|---|---:|---:|---:|
+| Accuracy | 43.00% | 44.00% | 45.00% |
+| Direct samples | 39 | 39 | 53 |
+| Structured CoT samples | 13 | 47 | 29 |
+| Full Multi-Agent samples | 48 | 14 | 18 |
+| Evidence empty rate | 52.00% | 86.00% | 82.00% |
+| Mean agent calls | 5.8 | 2.4 | 2.8 |
+| State Error | 20 | 0 | 0 |
+
+自动错误归因：
+
+```text
+Reasoning Error: 45
+Routing Error: 10
+State Error: 0
+Perception Error: 10
+Verification Error: 4
+```
+
+按问题类型看：
+
+```text
+Direct:
+PRES 35, COUNT 6, PLANE 5, OTHER 3, COLOR 2, ORGAN 1, MODALITY 1
+
+Structured CoT:
+SIZE 12, POS 8, ATTRIB 5, POS/PRES 2, SIZE/PRES 1, ATTRIB/PRES 1
+
+Full Multi-Agent:
+ABN 18
+```
+
+## v3 阶段性结论
+
+v3 相比 v2 达到了预期目标：
+
+```text
+1. accuracy 从 44% 提升到 45%。
+2. Structured CoT route 从 47 条收紧到 29 条。
+3. Structured CoT route accuracy 从 27.66% 提升到 41.38%。
+4. HIGH route 仍明显低于 v1：18 条 vs 48 条。
+5. State Error 保持 0。
+6. mean agent calls 为 2.8，明显低于 v1 的 5.8。
+```
+
+v3 已满足进入 full 的最低条件。需要注意的是，v3 的 Direct / CoT / Full 三条 route 内部
+accuracy 已比较接近，说明继续靠手写规则微调的收益会变小。下一步应优先跑 v3 full，
+然后做 Oracle Routing 分析，判断每个样本理论上应该选择 Direct、CoT 还是 Full。
+
 ## 实验指令
 
 Phase 4 heuristic full，作为当前最强 Multi-Agent 候选：
