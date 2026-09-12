@@ -547,3 +547,101 @@ Phase 6 因此把重点放到：
 Results/exp06_rule_based_adaptive_routing_qwen_7b_4090d_pmc10k_100/predictions.jsonl
 Results/exp06_rule_based_adaptive_routing_qwen_7b_4090d_pmc10k_100/metrics.json
 ```
+
+## Oracle Routing full 分析
+
+基于 451 条 VQA-RAD full test，同时比较 Direct、Structured CoT、Full Multi-Agent 和 Phase 6 v3 的选择结果。
+
+关键结果：
+
+| Metric | Value |
+|---|---:|
+| Samples | 451 |
+| Oracle accuracy | 61.20% |
+| Phase 6 v3 routing accuracy | 50.55% |
+| Routing-to-oracle match rate | 35.48% |
+| Over-reasoning rate | 18.63% |
+| Under-reasoning rate | 7.10% |
+| Unrecoverable error rate | 38.80% |
+
+Oracle 最优路线分布：
+
+| Oracle Route | Count |
+|---|---:|
+| Direct | 225 |
+| Structured CoT | 42 |
+| Full Multi-Agent | 9 |
+| None correct | 175 |
+
+Phase 6 v3 实际选择分布：
+
+| Selected Route | Count |
+|---|---:|
+| Direct | 264 |
+| Structured CoT | 127 |
+| Full Multi-Agent | 60 |
+
+结论：
+
+```text
+1. Direct 是当前最强的默认路线，Oracle 中有 225 条样本由 Direct 最优。
+2. Full Multi-Agent 的 Oracle 最优样本只有 9 条，但 v3 实际选择了 60 条，说明仍然过度调用复杂 agent。
+3. Structured CoT 的 Oracle 最优样本是 42 条，但 v3 实际选择了 127 条，说明 CoT 也存在过度使用。
+4. over-reasoning rate 18.63% 高于 under-reasoning rate 7.10%，下一版应优先减少过度推理。
+5. ABN 不应该自动进入 Full Multi-Agent。ABN 的 Oracle 分布是 Direct 29、Structured CoT 5、Full 1、None 21。
+```
+
+因此 v4 的设计目标不是继续扩大 Multi-Agent，而是更接近 Oracle 分布：
+
+```text
+Direct:
+默认路线。普通 PRES / POS / ABN / MODALITY / PLANE / ORGAN / COUNT / COLOR 只要没有强医学推理触发词，优先 Direct。
+
+Structured CoT:
+只保留 SIZE / ATTRIB，或明确 larger / smaller / increased / decreased / compare / which side 等比较型视觉推理触发词。
+
+Full Multi-Agent:
+只保留 diagnosis / diagnostic / differential / etiology / cause / disease / compatible with / consistent with 等强医学知识触发词。
+```
+
+## v4 路由优化
+
+v4 已实现为独立 `rule_based_v4`，不覆盖 v1 / v2 / v3。它的核心假设是：
+
+```text
+当 Direct 已经是最强单路线时，Supervisor 的第一职责不是增加 reasoning depth，
+而是避免把简单视觉问题送入会产生答案漂移的复杂链路。
+```
+
+v4 相比 v3 的变化：
+
+| Rule | v3 | v4 |
+|---|---|---|
+| ABN | 默认 Full Multi-Agent | 默认 Direct，除非有强诊断触发词 |
+| POS | 默认 Structured CoT | 默认 Direct |
+| SIZE / ATTRIB | Structured CoT | 保留 Structured CoT |
+| pathology / abnormality | 可触发 Full | 不再单独触发 Full |
+| diagnosis / cause / differential | Full | 保留 Full |
+
+v4 100 条调参：
+
+```bash
+python scripts/run_phase6_adaptive_routing.py --config configs/experiments/exp06_rule_based_adaptive_routing_v4_qwen_7b_4090d_pmc10k_100.yaml
+```
+
+v4 full：
+
+```bash
+python scripts/run_phase6_adaptive_routing.py --config configs/experiments/exp06_rule_based_adaptive_routing_v4_qwen_7b_4090d_pmc10k_full.yaml
+```
+
+建议先跑 100 条。如果 v4 100 条满足下面条件，再跑 full：
+
+```text
+accuracy >= v3 100 的 45%
+Direct route 占比明显上升
+Structured CoT route 占比下降
+Full Multi-Agent route 占比下降
+State Error = 0
+mean agent calls <= v3 的 2.8
+```

@@ -50,6 +50,8 @@ def decide_rule_based_route(
         return decide_rule_based_route_v2(sample)
     if policy == "rule_based_v3":
         return decide_rule_based_route_v3(sample)
+    if policy == "rule_based_v4":
+        return decide_rule_based_route_v4(sample)
     if policy != "rule_based_v1":
         raise ValueError(f"Unsupported Phase 6 routing policy: {policy}")
 
@@ -281,6 +283,84 @@ def decide_rule_based_route_v3(sample: VQARADSample) -> RoutingDecision:
     )
 
 
+def decide_rule_based_route_v4(sample: VQARADSample) -> RoutingDecision:
+    """Phase6 v4 路由规则。
+
+    Oracle Routing full 结果显示，理论最优路线以 Direct 为主，
+    Full Multi-Agent 只在极少数样本上最优。
+    因此 v4 不再把 ABN、POS 这类问题类型自动升级，而是采用更保守的 Direct-dominant 策略：
+    - Full 只用于强诊断、病因、鉴别诊断、疾病解释类触发词。
+    - Structured CoT 只用于明确大小、属性、比较关系的视觉推理题。
+    - 其他样本默认 Direct，避免过度推理带来的答案漂移。
+    """
+    question_types = _question_type_set(sample)
+    answer_type = sample.answer_type.upper()
+    question = sample.question.lower()
+    markers = _matched_markers(question)
+    strong_markers = _matched_strong_medical_markers(question)
+    v4_full_markers = _matched_v4_full_markers(question)
+    v4_cot_markers = _matched_v4_cot_markers(question)
+    weak_visual_markers = _matched_visual_description_markers(question)
+
+    if v4_full_markers:
+        return _decision(
+            route=HIGH_ROUTE,
+            complexity="HIGH",
+            confidence_signal="LOW",
+            uncertainty_signal="HIGH",
+            evidence_support_signal="NEEDED",
+            reason="v4 strict diagnosis, disease, etiology, or differential trigger",
+            sample=sample,
+            matched_markers=markers,
+            strong_markers=strong_markers,
+            weak_visual_markers=weak_visual_markers,
+        )
+
+    if question_types & {"SIZE", "ATTRIB"} or v4_cot_markers:
+        return _decision(
+            route=MEDIUM_ROUTE,
+            complexity="MEDIUM",
+            confidence_signal="MEDIUM",
+            uncertainty_signal="MEDIUM",
+            evidence_support_signal="OPTIONAL",
+            reason="v4 narrow visual comparison, size, or attribute reasoning trigger",
+            sample=sample,
+            matched_markers=markers,
+            strong_markers=strong_markers,
+            weak_visual_markers=weak_visual_markers,
+        )
+
+    if _is_low_complexity(sample) or _is_direct_short_answer_question(
+        answer_type=answer_type,
+        question_types=question_types,
+    ):
+        return _decision(
+            route=LOW_ROUTE,
+            complexity="LOW",
+            confidence_signal="HIGH",
+            uncertainty_signal="LOW",
+            evidence_support_signal="NOT_REQUIRED",
+            reason="v4 direct-dominant short-answer visual question",
+            sample=sample,
+            matched_markers=markers,
+            strong_markers=strong_markers,
+            weak_visual_markers=weak_visual_markers,
+        )
+
+    return _decision(
+        route=LOW_ROUTE,
+        complexity="LOW",
+        confidence_signal="MEDIUM",
+        uncertainty_signal="LOW",
+        evidence_support_signal="NOT_REQUIRED",
+        reason="v4 default route follows oracle analysis: avoid CoT/full without strict trigger",
+        sample=sample,
+        matched_markers=markers,
+        strong_markers=strong_markers,
+        weak_visual_markers=weak_visual_markers,
+    )
+
+
 def fallback_route(route: str) -> str | None:
     """返回当前 route 的下一层 fallback，最多升一级。"""
     if route == LOW_ROUTE:
@@ -369,6 +449,42 @@ def _matched_strong_medical_markers(question: str) -> list[str]:
         "suggest pneumonia",
         "suggest malignancy",
         "pathology",
+    )
+    return [marker for marker in markers if marker in question]
+
+
+def _matched_v4_full_markers(question: str) -> list[str]:
+    """匹配 v4 中允许进入 Full Multi-Agent 的强医学推理触发词。"""
+    markers = (
+        "diagnosis",
+        "diagnostic",
+        "differential",
+        "etiology",
+        "cause",
+        "caused by",
+        "disease",
+        "compatible with",
+        "consistent with",
+        "suggest pneumonia",
+        "suggest malignancy",
+    )
+    return [marker for marker in markers if marker in question]
+
+
+def _matched_v4_cot_markers(question: str) -> list[str]:
+    """匹配 v4 中适合 Structured CoT 的小范围视觉比较触发词。"""
+    markers = (
+        "larger",
+        "smaller",
+        "greater",
+        "less than",
+        "more than",
+        "increased",
+        "decreased",
+        "changed",
+        "compare",
+        "comparison",
+        "which side",
     )
     return [marker for marker in markers if marker in question]
 

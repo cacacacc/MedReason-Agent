@@ -148,3 +148,68 @@ def test_rule_based_v3_routes_open_short_answer_pres_to_direct() -> None:
 
     assert decision.route == LOW_ROUTE
     assert decision.complexity == "LOW"
+
+
+def test_rule_based_v4_routes_generic_abnormality_to_direct() -> None:
+    decision = decide_rule_based_route(
+        _sample(
+            question="What abnormality is seen in the chest?",
+            answer_type="OPEN",
+            question_type="ABN",
+        ),
+        policy="rule_based_v4",
+    )
+
+    assert decision.route == LOW_ROUTE
+    assert decision.complexity == "LOW"
+
+
+def test_rule_based_v4_keeps_strong_diagnostic_question_high() -> None:
+    decision = decide_rule_based_route(
+        _sample(
+            question="What diagnosis is most consistent with this finding?",
+            answer_type="OPEN",
+            question_type="OTHER",
+        ),
+        policy="rule_based_v4",
+    )
+
+    assert decision.route == HIGH_ROUTE
+    assert decision.complexity == "HIGH"
+    assert "diagnosis" in decision.signals["strong_medical_markers"]
+
+
+def test_rule_based_v4_routes_pos_question_to_direct() -> None:
+    decision = decide_rule_based_route(
+        _sample(
+            question="Where is the lesion located?",
+            answer_type="OPEN",
+            question_type="POS, PRES",
+        ),
+        policy="rule_based_v4",
+    )
+
+    assert decision.route == LOW_ROUTE
+    assert decision.complexity == "LOW"
+
+
+def test_rule_based_v4_routes_size_and_comparison_to_cot() -> None:
+    size_decision = decide_rule_based_route(
+        _sample(
+            question="Is the mass larger than 3 cm?",
+            answer_type="CLOSED",
+            question_type="SIZE",
+        ),
+        policy="rule_based_v4",
+    )
+    comparison_decision = decide_rule_based_route(
+        _sample(
+            question="Which side has increased opacity?",
+            answer_type="OPEN",
+            question_type="PRES",
+        ),
+        policy="rule_based_v4",
+    )
+
+    assert size_decision.route == MEDIUM_ROUTE
+    assert comparison_decision.route == MEDIUM_ROUTE
