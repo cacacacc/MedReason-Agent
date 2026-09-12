@@ -58,6 +58,7 @@ def summarize_phase5_metrics(records: list[dict[str, Any]]) -> dict[str, Any]:
 
     candidate_hallucination_rate = sum(candidate_hallucinations) / total
     final_hallucination_rate = sum(final_hallucinations) / total
+    verifier_detection = _verifier_detection_metrics(records)
     return {
         "candidate_accuracy": sum(candidate_correct) / total,
         "final_accuracy": sum(final_correct) / total,
@@ -103,6 +104,10 @@ def summarize_phase5_metrics(records: list[dict[str, Any]]) -> dict[str, Any]:
         "final_unsupported_claim_rate": sum(final_hallucinations) / total,
         "process_error_type_counts": _process_error_type_counts(records),
         "process_error_recovery": _process_error_recovery(records),
+        "verifier_detection": verifier_detection,
+        "verifier_precision": verifier_detection["precision"],
+        "verifier_recall": verifier_detection["recall"],
+        "verifier_f1": verifier_detection["f1"],
         "process_verdict_counts": _field_counts(records, "process_verdict"),
         "process_recommended_action_counts": _field_counts(
             records,
@@ -166,6 +171,18 @@ def _empty_metrics() -> dict[str, Any]:
         "process_error_recovery": {
             error_type: _empty_recovery_counts() for error_type in PROCESS_ERROR_TYPES
         },
+        "verifier_detection": {
+            "true_positive": 0,
+            "false_positive": 0,
+            "false_negative": 0,
+            "true_negative": 0,
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+        },
+        "verifier_precision": 0.0,
+        "verifier_recall": 0.0,
+        "verifier_f1": 0.0,
         "process_verdict_counts": {},
         "process_recommended_action_counts": {},
         "mean_process_grounding_score": None,
@@ -211,6 +228,58 @@ def _process_error_recovery(records: list[dict[str, Any]]) -> dict[str, dict[str
         detected = counts["detected"]
         counts["recovery_rate"] = counts["corrected"] / detected if detected else 0.0
     return recovery
+
+
+def _verifier_detection_metrics(records: list[dict[str, Any]]) -> dict[str, int | float]:
+    """用 candidate correctness 弱监督评估 verifier 是否定位到错误。
+
+    Phase 7 的核心是 process-level error detection。没有人工 step label 时，先把
+    candidate_correct=False 视为样本级 process error proxy；Verifier/Reflection 只要输出
+    REVISE、error_types，或 step_results 中出现 UNSUPPORTED/CONTRADICTED，就记为 detected。
+    """
+    true_positive = 0
+    false_positive = 0
+    false_negative = 0
+    true_negative = 0
+    for record in records:
+        has_error = not bool(record.get("candidate_correct"))
+        detected = _process_error_detected(record)
+        if detected and has_error:
+            true_positive += 1
+        elif detected and not has_error:
+            false_positive += 1
+        elif not detected and has_error:
+            false_negative += 1
+        else:
+            true_negative += 1
+
+    precision = _safe_divide(true_positive, true_positive + false_positive)
+    recall = _safe_divide(true_positive, true_positive + false_negative)
+    return {
+        "true_positive": true_positive,
+        "false_positive": false_positive,
+        "false_negative": false_negative,
+        "true_negative": true_negative,
+        "precision": precision,
+        "recall": recall,
+        "f1": _safe_divide(2 * precision * recall, precision + recall),
+    }
+
+
+def _process_error_detected(record: dict[str, Any]) -> bool:
+    """判断 verifier/reflection 是否明确检测到过程错误。"""
+    decision = str(record.get("process_recommended_action") or "").upper()
+    verdict = str(record.get("process_verdict") or "").upper()
+    critic_decision = str(record.get("critic_decision") or "").upper()
+    if "REVISE" in {decision, verdict, critic_decision}:
+        return True
+    if record.get("process_error_types"):
+        return True
+    return any(
+        isinstance(item, dict)
+        and str(item.get("status", "")).upper() in {"UNSUPPORTED", "CONTRADICTED"}
+        for item in record.get("process_step_results", [])
+    )
 
 
 def _empty_recovery_counts() -> dict[str, int | float]:
@@ -276,6 +345,13 @@ def _relative_reduction(before: float, after: float) -> float:
     if before <= 0:
         return 0.0
     return (before - after) / before
+
+
+def _safe_divide(numerator: float, denominator: float) -> float:
+    """安全除法，分母为 0 时返回 0。"""
+    if denominator <= 0:
+        return 0.0
+    return numerator / denominator
 
 
 def _subtype_rate(

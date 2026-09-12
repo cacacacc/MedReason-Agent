@@ -85,6 +85,7 @@ def test_phase5_prompt_builders_use_required_trace_inputs() -> None:
     assert "must not generate a new answer" in verifier_prompt
     assert "Observation Grounding" in verifier_prompt
     assert "Evidence Grounding" in verifier_prompt
+    assert "Unsupported Claim" in verifier_prompt
     assert "Confidence Alignment" in verifier_prompt
 
 
@@ -195,3 +196,15 @@ def test_phase5_metrics_count_corrections_and_regressions() -> None:
     assert metrics["process_error_type_counts"]["UNSUPPORTED_CLAIM"] == 1
     assert metrics["process_error_recovery"]["UNSUPPORTED_CLAIM"]["corrected"] == 1
     assert metrics["mean_process_grounding_score"] == 0.6
+    assert metrics["verifier_detection"] == {
+        "true_positive": 1,
+        "false_positive": 1,
+        "false_negative": 0,
+        "true_negative": 0,
+        "precision": 0.5,
+        "recall": 1.0,
+        "f1": 2 / 3,
+    }
+    assert metrics["verifier_precision"] == 0.5
+    assert metrics["verifier_recall"] == 1.0
+    assert metrics["verifier_f1"] == 2 / 3

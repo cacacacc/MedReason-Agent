@@ -134,26 +134,34 @@ Candidate Answer:
 Candidate Confidence:
 {confidence}
 
-Check the reasoning process with exactly these five layers:
+Check the reasoning process with exactly these six layers:
 A. Observation Grounding
 - Check whether each observation claim in reasoning is truly grounded in Vision Findings.
 - Mark contradictions with Vision Findings as CONTRADICTED.
 
 B. Evidence Grounding
 - If Retrieval was used, check whether reasoning claims are supported by retrieved evidence.
-- Detect unsupported claim, evidence misuse, overclaim, and knowledge conflict.
+- Detect evidence misuse, overclaim, and knowledge conflict.
 
 C. Logical Consistency
 - Check whether Observation -> Evidence -> Inference -> Conclusion is valid.
 - Detect logical leap, invalid inference, causal overclaim, and uncertainty amplification.
 
-D. Contradiction
+D. Unsupported Claim
+- Check whether the reasoning introduces medical claims that are not grounded in
+  Vision Findings or Retrieved Evidence.
+- Mark unsupported assumptions as UNSUPPORTED.
+
+E. Contradiction
 - Check internal contradictions in the reasoning trace and contradictions against Vision / Evidence.
 
-E. Confidence Alignment
+F. Confidence Alignment
 - Check whether confidence matches visual confidence, evidence strength, reasoning uncertainty,
   and multiple plausible hypotheses.
 - Detect OVERCONFIDENCE and UNDERCONFIDENCE.
+
+Return at least one step_result for each checked layer. Use step_id prefixes:
+obs_, evidence_, reason_, unsupported_, contradiction_, confidence_.
 
 Allowed error_types:
 PERCEPTION_ERROR, RETRIEVAL_ERROR, LOGICAL_ERROR, UNSUPPORTED_CLAIM,

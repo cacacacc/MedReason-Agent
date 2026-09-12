@@ -381,3 +381,108 @@ python scripts/run_phase5_verification.py --config configs/experiments/exp05_sel
 如果 `Selective Verifier` 的 verification rate 明显低于 100%，但 accuracy / hallucination 接近 Full Verifier，说明 selective verification 有 reliability-efficiency trade-off 价值。
 
 如果错误主要集中在 `PERCEPTION_ERROR` 或 `RETRIEVAL_ERROR`，Phase 5 textual revision 通常很难修复，这正好引出 Phase 6 的 Error-Conditioned Replanning。
+
+## 当前 Separate Verifier 100 条结果
+
+实验：
+
+```text
+Experiment: exp05_separate_verifier_qwen_7b_4090d_pmc10k_100
+Samples: 100
+Model: /root/autodl-tmp/models/Qwen2.5-VL-7B-Instruct
+Backend: qwen2_5_vl
+Agent mode: SupervisorMultiAgent
+Question routing: none
+Verification mode: separate_verifier
+Selective verification: all
+Retriever: FAISS, top_k=5
+```
+
+主要指标：
+
+| Metric | Value |
+|---|---:|
+| Candidate accuracy | 36.00% |
+| Final accuracy | 34.00% |
+| Accuracy change | -2.00 |
+| Error correction rate | 6.25% |
+| Error regression rate | 16.67% |
+| Correct answer preservation rate | 83.33% |
+| Net correction | -2 |
+| Selective verification rate | 100.00% |
+| Verifier call count | 100 |
+| Mean agent calls | 9.0 |
+| Mean total tokens | 13153.18 |
+| Mean latency | 17.44 s |
+
+Paired transitions：
+
+| Transition | Count |
+|---|---:|
+| Wrong -> Correct | 4 |
+| Correct -> Wrong | 6 |
+| Wrong -> Wrong | 60 |
+| Correct -> Correct | 30 |
+
+过程验证输出：
+
+```text
+process_verdict_counts:
+PASS: 99
+REVISE: 1
+
+process_error_type_counts:
+all 0
+```
+
+阶段结论：
+
+```text
+1. 全量 Separate Verifier 是负收益：final accuracy 从 candidate 的 36% 降到 34%。
+2. regression 多于 correction：6 条正确答案被改错，只修正 4 条错误答案。
+3. verifier 几乎没有检测到 process-level error type，说明当前 prompt 对 VQA-RAD 短答案任务过于保守或失焦。
+4. 每条样本都调用 verifier，mean agent calls=9.0，成本远高于 Phase6 v5 的 1.07。
+5. 这个结果不支持“全量后验 verifier 提升 accuracy”，但支持后续做 selective verifier ablation。
+```
+
+## Phase5 调参方向
+
+Phase5 继续使用 `SupervisorMultiAgent`，但不再使用全量 verifier。下一步只比较：
+
+```text
+SupervisorMultiAgent + heuristic candidate routing + no post critic
+vs
+SupervisorMultiAgent + heuristic candidate routing + selective process verifier
+```
+
+这样可以回答两个问题：
+
+```text
+1. heuristic candidate routing 本身是否提高 SupervisorMultiAgent candidate quality？
+2. selective verifier 是否能在较低调用率下减少 hallucination / unsupported claim，同时不降低 accuracy？
+```
+
+新增配置：
+
+```text
+configs/experiments/exp05_supervisor_no_critic_heuristic_routing_qwen_7b_4090d_pmc10k_100.yaml
+configs/experiments/exp05_supervisor_no_critic_heuristic_routing_qwen_7b_4090d_pmc10k_full.yaml
+configs/experiments/exp05_selective_verifier_heuristic_routing_qwen_7b_4090d_pmc10k_full.yaml
+```
+
+推荐先跑 100 条：
+
+```bash
+python scripts/run_phase5_verification.py --config configs/experiments/exp05_supervisor_no_critic_heuristic_routing_qwen_7b_4090d_pmc10k_100.yaml
+python scripts/run_phase5_verification.py --config configs/experiments/exp05_selective_verifier_heuristic_routing_qwen_7b_4090d_pmc10k_100.yaml
+```
+
+判断标准：
+
+```text
+selective verifier final_accuracy >= no_critic candidate_accuracy
+net_correction >= 0
+error_regression_rate 明显低于 all verifier 的 16.67%
+selective_verification_rate 明显低于 100%
+mean_agent_calls 明显低于 all verifier 的 9.0
+```

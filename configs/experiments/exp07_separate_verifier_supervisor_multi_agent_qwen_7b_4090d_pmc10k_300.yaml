@@ -1,0 +1,50 @@
+experiment_id: exp07_separate_verifier_supervisor_multi_agent_qwen_7b_4090d_pmc10k_300
+name: Phase 7 Separate Process Verifier - SupervisorMultiAgent Qwen 2.5 VL 7B 4090D PMC 10k 300 Samples
+phase: 7
+inherits: configs/base.yaml
+
+method:
+  type: process_verification
+  backend: qwen2_5_vl
+  model_id: /root/autodl-tmp/models/Qwen2.5-VL-7B-Instruct
+  torch_dtype: bfloat16
+  device_map: auto
+  prompt_version: phase7_process_verification_v1
+  prompt_contract: separate_verifier_process_level_supervisor_candidate_v1
+  agent_mode: supervisor_multi_agent
+  verification_mode: separate_verifier
+  selective_verification: all
+  dynamic_routing: false
+  deterministic_answer_gate: false
+  rag_mode: supervised_retrieval_verification
+  training_epochs: 0
+
+dataset:
+  name: VQA-RAD
+  split: test
+  scale: phase7_300
+  max_samples: 300
+
+retrieval:
+  enabled: true
+  retriever: faiss
+  embedding_model: /root/autodl-tmp/models/bge-small-en-v1.5
+  index_path: Data/Processed/medical_kb/pmc_10k_bge_small.faiss
+  metadata_path: Data/Processed/medical_kb/pmc_10k_bge_small_metadata.jsonl
+  reranker: keyword_reranker
+  corpus_name: pmc_abstracts_10k
+  corpus_path: Data/Processed/medical_kb/pmc_10k_chunks.jsonl
+  candidate_top_k: 10
+  top_k: 5
+  min_rerank_score: 0.0
+  max_chars_per_evidence: 500
+
+generation:
+  temperature: 0.0
+  top_p: 1.0
+  max_new_tokens: 256
+
+outputs:
+  result_dir: Results/exp07_separate_verifier_supervisor_multi_agent_qwen_7b_4090d_pmc10k_300
+  prediction_file: predictions.jsonl
+  metrics_file: metrics.json
