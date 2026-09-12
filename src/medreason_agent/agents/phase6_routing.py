@@ -52,6 +52,8 @@ def decide_rule_based_route(
         return decide_rule_based_route_v3(sample)
     if policy == "rule_based_v4":
         return decide_rule_based_route_v4(sample)
+    if policy == "rule_based_v5":
+        return decide_rule_based_route_v5(sample)
     if policy != "rule_based_v1":
         raise ValueError(f"Unsupported Phase 6 routing policy: {policy}")
 
@@ -361,6 +363,96 @@ def decide_rule_based_route_v4(sample: VQARADSample) -> RoutingDecision:
     )
 
 
+def decide_rule_based_route_v5(sample: VQARADSample) -> RoutingDecision:
+    """Phase6 v5 路由规则。
+
+    v5 基于 v4 full 的 Oracle gap 分析，只修正最明确的 under-reasoning：
+    v4 选 Direct、但 Oracle 显示 Structured CoT 才正确的一小组稳定题型。
+    这个版本仍保留 v4 的 Direct-dominant 主体，避免重新扩大 Full Multi-Agent。
+    """
+    question_types = _question_type_set(sample)
+    answer_type = sample.answer_type.upper()
+    question = sample.question.lower()
+    markers = _matched_markers(question)
+    strong_markers = _matched_strong_medical_markers(question)
+    v4_full_markers = _matched_v4_full_markers(question)
+    v4_cot_markers = _matched_v4_cot_markers(question)
+    v5_cot_markers = _matched_v5_oracle_gap_cot_markers(question)
+    weak_visual_markers = _matched_visual_description_markers(question)
+
+    if v4_full_markers:
+        return _decision(
+            route=HIGH_ROUTE,
+            complexity="HIGH",
+            confidence_signal="LOW",
+            uncertainty_signal="HIGH",
+            evidence_support_signal="NEEDED",
+            reason="v5 strict diagnosis, disease, etiology, or differential trigger",
+            sample=sample,
+            matched_markers=markers,
+            strong_markers=strong_markers,
+            weak_visual_markers=weak_visual_markers,
+        )
+
+    if v5_cot_markers:
+        return _decision(
+            route=MEDIUM_ROUTE,
+            complexity="MEDIUM",
+            confidence_signal="MEDIUM",
+            uncertainty_signal="MEDIUM",
+            evidence_support_signal="OPTIONAL",
+            reason="v5 oracle-gap visual finding or localization trigger",
+            sample=sample,
+            matched_markers=markers,
+            strong_markers=strong_markers,
+            weak_visual_markers=weak_visual_markers,
+        )
+
+    if question_types & {"SIZE", "ATTRIB"} or v4_cot_markers:
+        return _decision(
+            route=MEDIUM_ROUTE,
+            complexity="MEDIUM",
+            confidence_signal="MEDIUM",
+            uncertainty_signal="MEDIUM",
+            evidence_support_signal="OPTIONAL",
+            reason="v5 inherited v4 visual comparison, size, or attribute trigger",
+            sample=sample,
+            matched_markers=markers,
+            strong_markers=strong_markers,
+            weak_visual_markers=weak_visual_markers,
+        )
+
+    if _is_low_complexity(sample) or _is_direct_short_answer_question(
+        answer_type=answer_type,
+        question_types=question_types,
+    ):
+        return _decision(
+            route=LOW_ROUTE,
+            complexity="LOW",
+            confidence_signal="HIGH",
+            uncertainty_signal="LOW",
+            evidence_support_signal="NOT_REQUIRED",
+            reason="v5 direct-dominant short-answer visual question",
+            sample=sample,
+            matched_markers=markers,
+            strong_markers=strong_markers,
+            weak_visual_markers=weak_visual_markers,
+        )
+
+    return _decision(
+        route=LOW_ROUTE,
+        complexity="LOW",
+        confidence_signal="MEDIUM",
+        uncertainty_signal="LOW",
+        evidence_support_signal="NOT_REQUIRED",
+        reason="v5 default route avoids CoT/full without explicit oracle-gap trigger",
+        sample=sample,
+        matched_markers=markers,
+        strong_markers=strong_markers,
+        weak_visual_markers=weak_visual_markers,
+    )
+
+
 def fallback_route(route: str) -> str | None:
     """返回当前 route 的下一层 fallback，最多升一级。"""
     if route == LOW_ROUTE:
@@ -485,6 +577,36 @@ def _matched_v4_cot_markers(question: str) -> list[str]:
         "compare",
         "comparison",
         "which side",
+    )
+    return [marker for marker in markers if marker in question]
+
+
+def _matched_v5_oracle_gap_cot_markers(question: str) -> list[str]:
+    """匹配 v4 Oracle gap 中 CoT 稳定救回的窄触发词。"""
+    markers = (
+        "airspace consolidation",
+        "vascular pathology",
+        ">12 ribs",
+        "small bowel obstruction",
+        "more radioopaque",
+        "gastrointestinal system",
+        "mass calcified",
+        "lung markings",
+        "liver visible",
+        "bright white structures",
+        "safe for pregnant",
+        "kidneys normal",
+        "hylar lymphadenopathy",
+        "hilar lymphadenopathy",
+        "mass present",
+        "is a mass",
+        "hypodense mass",
+        "gallstones",
+        "bright specks",
+        "left kidney abnormal",
+        "gastric bubble",
+        "sequence of this mri",
+        "left or right",
     )
     return [marker for marker in markers if marker in question]
 

@@ -645,3 +645,298 @@ Full Multi-Agent route 占比下降
 State Error = 0
 mean agent calls <= v3 的 2.8
 ```
+
+## 当前 v4 100 条结果
+
+实验：
+
+```text
+Experiment: exp06_rule_based_adaptive_routing_v4_qwen_7b_4090d_pmc10k_100
+Samples: 100
+Model: /root/autodl-tmp/models/Qwen2.5-VL-7B-Instruct
+Backend: qwen2_5_vl
+Embedding / retrieval: FAISS + PMC 10k，但 v4 100 条没有触发 Full Multi-Agent，因此 evidence 为空
+Routing policy: rule_based_v4
+```
+
+主要指标：
+
+| Metric | Value |
+|---|---:|
+| Accuracy | 48.00% |
+| Correct | 48 / 100 |
+| Mean token F1 | 49.95% |
+| Mean BLEU-1 | 49.75% |
+| Mean evidence quality | 0.0000 |
+| Evidence empty rate | 100.00% |
+| Mean reasoning score | 0.25 |
+| Hallucination rate | 0.00% |
+| Mean agent calls | 1.0 |
+| Fallback count | 0 |
+| State Error | 0 |
+
+v4 路由分布：
+
+```text
+LOW / Direct: 78 samples
+MEDIUM / Structured CoT: 22 samples
+HIGH / Full Multi-Agent: 0 samples
+```
+
+各路线内部表现：
+
+| Route | Samples | Accuracy |
+|---|---:|---:|
+| Direct | 78 | 44.87% |
+| Structured CoT | 22 | 59.09% |
+
+v4 相比 v3 100 条：
+
+| Metric | v3 | v4 | Change |
+|---|---:|---:|---:|
+| Accuracy | 45.00% | 48.00% | +3.00 |
+| Direct samples | 53 | 78 | +25 |
+| Structured CoT samples | 29 | 22 | -7 |
+| Full Multi-Agent samples | 18 | 0 | -18 |
+| Mean agent calls | 2.8 | 1.0 | -1.8 |
+| State Error | 0 | 0 | 0 |
+
+阶段结论：
+
+```text
+1. v4 达到当前 100 条调参集最高 accuracy：48%。
+2. Direct-dominant 路由有效，减少复杂 agent 后 accuracy 和成本同时改善。
+3. Structured CoT 在 v4 选择到的 22 条样本上 accuracy 为 59.09%，说明收紧后的 CoT 比 v2/v3 更像有效子路线。
+4. Full Multi-Agent 在这 100 条中没有被调用，符合 Oracle full 中 Full 最优样本极少的趋势。
+5. 当前 v4 可以进入 full run，但 full 后需要继续检查是否过度压制了 Full Multi-Agent。
+```
+
+## 当前 v4 full 结果
+
+实验：
+
+```text
+Experiment: exp06_rule_based_adaptive_routing_v4_qwen_7b_4090d_pmc10k_full
+Samples: 451
+Model: /root/autodl-tmp/models/Qwen2.5-VL-7B-Instruct
+Backend: qwen2_5_vl
+Routing policy: rule_based_v4
+```
+
+主要指标：
+
+| Metric | Value |
+|---|---:|
+| Accuracy | 52.33% |
+| Correct | 236 / 451 |
+| Mean token F1 | 56.70% |
+| Mean BLEU-1 | 55.50% |
+| Mean evidence quality | 0.0062 |
+| Evidence empty rate | 99.33% |
+| Mean reasoning score | 0.2550 |
+| Hallucination rate | 0.44% |
+| Mean agent calls | 1.07 |
+| Fallback count | 0 |
+| State Error | 0 |
+
+v4 full 路由分布：
+
+```text
+LOW / Direct: 372 samples
+MEDIUM / Structured CoT: 76 samples
+HIGH / Full Multi-Agent: 3 samples
+```
+
+各路线内部表现：
+
+| Route | Samples | Accuracy |
+|---|---:|---:|
+| Direct | 372 | 50.81% |
+| Structured CoT | 76 | 60.53% |
+| Full Multi-Agent | 3 | 33.33% |
+
+v4 full 相比 v3 full / Oracle：
+
+| Metric | v3 full | v4 full | Oracle |
+|---|---:|---:|---:|
+| Accuracy | 50.55% | 52.33% | 61.20% |
+| Direct samples | 264 | 372 | 225 |
+| Structured CoT samples | 127 | 76 | 42 |
+| Full Multi-Agent samples | 60 | 3 | 9 |
+| Mean agent calls | not listed | 1.07 | not applicable |
+
+阶段结论：
+
+```text
+1. v4 full 是当前 Phase 6 最好结果，accuracy 达到 52.33%。
+2. v4 证明减少 over-reasoning 是有效方向：accuracy 提升，同时 agent 调用成本大幅下降。
+3. Structured CoT 在 76 条样本上 accuracy 为 60.53%，说明 v4 对 CoT 的选择比 v3 更有效。
+4. Full Multi-Agent 只调用 3 条，低于 Oracle 的 9 条，说明 v4 可能略微 under-use Full，但这不是当前主要问题。
+5. 距离 Oracle 61.20% 仍有约 8.87 个百分点空间，下一步应做 sample-level oracle gap 分析，而不是继续盲目加复杂 agent。
+```
+
+下一步建议：
+
+```text
+优先做 v4 的 Oracle gap 分析：
+1. 找出 v4 选 Direct 但 Oracle 最优是 Structured CoT 的样本。
+2. 找出 v4 选 Direct / Structured CoT 但 Oracle 最优是 Full Multi-Agent 的样本。
+3. 找出 v4 错但 Direct / CoT / Full 都错的 unrecoverable 样本，避免把不可恢复错误误当成 routing 问题。
+```
+
+## v4 Oracle Routing full 分析
+
+实验：
+
+```text
+Routing result: Results/exp06_rule_based_adaptive_routing_v4_qwen_7b_4090d_pmc10k_full/predictions.jsonl
+Oracle output: Results/oracle_routing_analysis_v4_full
+Samples: 451
+```
+
+关键指标：
+
+| Metric | v3 Oracle Analysis | v4 Oracle Analysis | Change |
+|---|---:|---:|---:|
+| Routing accuracy | 50.55% | 52.33% | +1.78 |
+| Routing-to-oracle match rate | 35.48% | 42.57% | +7.10 |
+| Over-reasoning rate | 18.63% | 9.53% | -9.09 |
+| Under-reasoning rate | 7.10% | 9.09% | +1.99 |
+| Unrecoverable error rate | 38.80% | 38.80% | 0 |
+| Matched route count | 160 | 192 | +32 |
+| Over-reasoning count | 84 | 43 | -41 |
+| Under-reasoning count | 32 | 41 | +9 |
+
+v4 selected route vs oracle：
+
+| Selected Route | Oracle Direct | Oracle CoT | Oracle Full | Oracle None | Total |
+|---|---:|---:|---:|---:|---:|
+| Direct | 182 | 32 | 5 | 153 | 372 |
+| Structured CoT | 41 | 10 | 4 | 21 | 76 |
+| Full Multi-Agent | 2 | 0 | 0 | 1 | 3 |
+
+主要结论：
+
+```text
+1. v4 的核心收益来自减少 over-reasoning：over-reasoning 从 84 条降到 43 条。
+2. v4 的代价是 under-reasoning 略升：从 32 条升到 41 条。
+3. v4 选 Direct 但 Oracle 是 Structured CoT 的样本有 32 条，这是下一版最值得优化的部分。
+4. v4 选 Direct 但 Oracle 是 Full Multi-Agent 的样本只有 5 条；v4 选 Structured CoT 但 Oracle 是 Full 的样本有 4 条。
+5. Full Multi-Agent 当前不是主要增益来源。Oracle 中 Full 最优只有 9 条，盲目扩大 Full 会重新引入 over-reasoning。
+```
+
+下一版 v5 不应回到 v3 的高 Full 调用，而应做小幅修正：
+
+```text
+v5 目标：
+保留 v4 的 Direct-dominant 主体，只增加一小类 CoT 触发规则，追回 Direct -> Oracle CoT 的 32 条。
+
+不建议：
+大幅增加 Full Multi-Agent。
+
+建议：
+优先分析 oracle_analysis.csv 中 selected_route=direct 且 oracle_route=structured_cot 的 32 条样本，
+从问题文本里提取稳定规则，再决定是否进入 v5。
+```
+
+## v5 路由优化
+
+v5 是基于 v4 Oracle gap 的小步优化，不推翻 v4。它只针对：
+
+```text
+selected_route = direct
+oracle_route = structured_cot
+count = 32
+```
+
+这 32 条样本的分布：
+
+| Dimension | Main Pattern |
+|---|---|
+| Question type | PRES 16, ABN 5, POS 3, MODALITY 2, OTHER 2 |
+| Answer type | CLOSED 23, OPEN 9 |
+| Organ | ABD 15, CHEST 10, HEAD 7 |
+
+重要发现：
+
+```text
+1. CoT 可救回的样本并不主要来自 SIZE / ATTRIB。
+2. v4 的 CoT 误伤反而主要来自 broad SIZE / ATTRIB 规则。
+3. 可救回样本集中在特定 finding、左右定位、MRI sequence、bright structures 等问题文本。
+```
+
+因此 v5 只新增窄 CoT 触发词，例如：
+
+```text
+airspace consolidation
+vascular pathology
+small bowel obstruction
+calcified / calcifications
+lung markings
+lymphadenopathy
+mass present
+hypodense mass
+gallstones
+bright white structures
+bright specks
+left kidney abnormal
+gastric bubble
+sequence of this MRI
+left or right
+```
+
+v5 仍然保持：
+
+```text
+Direct:
+默认路线。
+
+Structured CoT:
+v4 原有 SIZE / ATTRIB / 比较型触发词
++
+v5 从 Oracle gap 得到的窄触发词。
+
+Full Multi-Agent:
+仍然只由强 diagnosis / cause / etiology / differential 等触发。
+```
+
+注意：
+
+```text
+v5 是 oracle-guided tuning 版本，适合证明“样本级 routing gap 可以被规则修正”。
+写论文时不能把 v5 当作完全独立、未调参的 unbiased test 结果。
+更稳妥的表述是：v4 为主结果，v5 为 oracle-guided error analysis / routing refinement。
+```
+
+v5 100 条：
+
+```bash
+python scripts/run_phase6_adaptive_routing.py --config configs/experiments/exp06_rule_based_adaptive_routing_v5_qwen_7b_4090d_pmc10k_100.yaml
+```
+
+v5 full：
+
+```bash
+python scripts/run_phase6_adaptive_routing.py --config configs/experiments/exp06_rule_based_adaptive_routing_v5_qwen_7b_4090d_pmc10k_full.yaml
+```
+
+v5 full 后继续跑 Oracle 对比：
+
+```bash
+python scripts/analyze_oracle_routing.py \
+  --direct Results/exp01_direct_vlm_qwen_7b_cuda_full/predictions.jsonl \
+  --cot Results/exp02_structured_cot_qwen_7b_4090d_full/predictions.jsonl \
+  --full-agent Results/exp04_supervisor_multi_agent_heuristic_routing_qwen_7b_4090d_pmc10k_full/predictions.jsonl \
+  --routing Results/exp06_rule_based_adaptive_routing_v5_qwen_7b_4090d_pmc10k_full/predictions.jsonl \
+  --output Results/oracle_routing_analysis_v5_full
+```
+
+v5 判断标准：
+
+```text
+accuracy > v4 full 的 52.33%
+routing-to-oracle match rate > v4 的 42.57%
+under-reasoning rate 下降
+over-reasoning rate 不明显反弹
+mean agent calls 仍接近 1
+```

@@ -213,3 +213,59 @@ def test_rule_based_v4_routes_size_and_comparison_to_cot() -> None:
 
     assert size_decision.route == MEDIUM_ROUTE
     assert comparison_decision.route == MEDIUM_ROUTE
+
+
+def test_rule_based_v5_routes_oracle_gap_finding_question_to_cot() -> None:
+    decision = decide_rule_based_route(
+        _sample(
+            question="Is there airspace consolidation on the left side?",
+            answer_type="CLOSED",
+            question_type="PRES",
+        ),
+        policy="rule_based_v5",
+    )
+
+    assert decision.route == MEDIUM_ROUTE
+    assert decision.complexity == "MEDIUM"
+
+
+def test_rule_based_v5_routes_oracle_gap_modality_question_to_cot() -> None:
+    decision = decide_rule_based_route(
+        _sample(
+            question="What is the sequence of this MRI?",
+            answer_type="OPEN",
+            question_type="MODALITY",
+        ),
+        policy="rule_based_v5",
+    )
+
+    assert decision.route == MEDIUM_ROUTE
+    assert decision.complexity == "MEDIUM"
+
+
+def test_rule_based_v5_keeps_generic_pres_direct() -> None:
+    decision = decide_rule_based_route(
+        _sample(
+            question="Is there evidence of rib fracture?",
+            answer_type="CLOSED",
+            question_type="PRES",
+        ),
+        policy="rule_based_v5",
+    )
+
+    assert decision.route == LOW_ROUTE
+    assert decision.complexity == "LOW"
+
+
+def test_rule_based_v5_keeps_strong_diagnostic_question_high() -> None:
+    decision = decide_rule_based_route(
+        _sample(
+            question="What diagnosis is most consistent with this finding?",
+            answer_type="OPEN",
+            question_type="OTHER",
+        ),
+        policy="rule_based_v5",
+    )
+
+    assert decision.route == HIGH_ROUTE
+    assert decision.complexity == "HIGH"
