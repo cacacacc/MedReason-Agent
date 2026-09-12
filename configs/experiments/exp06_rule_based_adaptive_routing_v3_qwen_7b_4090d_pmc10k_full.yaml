@@ -1,0 +1,48 @@
+experiment_id: exp06_rule_based_adaptive_routing_v3_qwen_7b_4090d_pmc10k_full
+name: Phase 6 Rule-Based Adaptive Routing v3 - Qwen 2.5 VL 7B 4090D PMC 10k Full Test
+phase: 6
+inherits: configs/base.yaml
+
+method:
+  type: adaptive_routing
+  backend: qwen2_5_vl
+  model_id: /root/autodl-tmp/models/Qwen2.5-VL-7B-Instruct
+  torch_dtype: bfloat16
+  device_map: auto
+  prompt_version: phase6_rule_based_adaptive_routing_v3
+  prompt_contract: low_direct_medium_strict_visual_cot_high_abn_multi_agent_v3
+  routing_policy: rule_based_v3
+  deterministic_answer_gate: false
+  fallback:
+    enabled: true
+  training_epochs: 0
+
+dataset:
+  name: VQA-RAD
+  split: test
+  scale: full
+  max_samples: null
+
+retrieval:
+  enabled: true
+  retriever: faiss
+  embedding_model: /root/autodl-tmp/models/bge-small-en-v1.5
+  index_path: Data/Processed/medical_kb/pmc_10k_bge_small.faiss
+  metadata_path: Data/Processed/medical_kb/pmc_10k_bge_small_metadata.jsonl
+  reranker: keyword_reranker
+  corpus_name: pmc_abstracts_10k
+  corpus_path: Data/Processed/medical_kb/pmc_10k_chunks.jsonl
+  candidate_top_k: 10
+  top_k: 5
+  min_rerank_score: 0.0
+  max_chars_per_evidence: 500
+
+generation:
+  temperature: 0.0
+  top_p: 1.0
+  max_new_tokens: 256
+
+outputs:
+  result_dir: Results/exp06_rule_based_adaptive_routing_v3_qwen_7b_4090d_pmc10k_full
+  prediction_file: predictions.jsonl
+  metrics_file: metrics.json

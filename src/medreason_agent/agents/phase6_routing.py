@@ -48,6 +48,8 @@ def decide_rule_based_route(
     """
     if policy == "rule_based_v2":
         return decide_rule_based_route_v2(sample)
+    if policy == "rule_based_v3":
+        return decide_rule_based_route_v3(sample)
     if policy != "rule_based_v1":
         raise ValueError(f"Unsupported Phase 6 routing policy: {policy}")
 
@@ -207,6 +209,78 @@ def decide_rule_based_route_v2(sample: VQARADSample) -> RoutingDecision:
     )
 
 
+def decide_rule_based_route_v3(sample: VQARADSample) -> RoutingDecision:
+    """Phase6 v3 路由规则。
+
+    v2 的问题是把太多样本送入 Structured CoT，导致 CoT route accuracy 从 v1 的小样本高值
+    回落到 27.66%。v3 收紧 CoT 的适用范围，只把明确的视觉推理题交给 CoT。
+    """
+    question_types = _question_type_set(sample)
+    answer_type = sample.answer_type.upper()
+    question = sample.question.lower()
+    markers = _matched_markers(question)
+    strong_markers = _matched_strong_medical_markers(question)
+    weak_visual_markers = _matched_visual_description_markers(question)
+
+    if strong_markers or "ABN" in question_types:
+        return _decision(
+            route=HIGH_ROUTE,
+            complexity="HIGH",
+            confidence_signal="LOW",
+            uncertainty_signal="HIGH",
+            evidence_support_signal="NEEDED",
+            reason="abnormality or strong medical-knowledge trigger",
+            sample=sample,
+            matched_markers=markers,
+            strong_markers=strong_markers,
+            weak_visual_markers=weak_visual_markers,
+        )
+
+    if question_types & {"POS", "SIZE", "ATTRIB"}:
+        return _decision(
+            route=MEDIUM_ROUTE,
+            complexity="MEDIUM",
+            confidence_signal="MEDIUM",
+            uncertainty_signal="MEDIUM",
+            evidence_support_signal="OPTIONAL",
+            reason="explicit visual reasoning question",
+            sample=sample,
+            matched_markers=markers,
+            strong_markers=strong_markers,
+            weak_visual_markers=weak_visual_markers,
+        )
+
+    if _is_low_complexity(sample) or _is_direct_short_answer_question(
+        answer_type=answer_type,
+        question_types=question_types,
+    ):
+        return _decision(
+            route=LOW_ROUTE,
+            complexity="LOW",
+            confidence_signal="HIGH",
+            uncertainty_signal="LOW",
+            evidence_support_signal="NOT_REQUIRED",
+            reason="short-answer visual question without high-risk medical trigger",
+            sample=sample,
+            matched_markers=markers,
+            strong_markers=strong_markers,
+            weak_visual_markers=weak_visual_markers,
+        )
+
+    return _decision(
+        route=LOW_ROUTE,
+        complexity="LOW",
+        confidence_signal="MEDIUM",
+        uncertainty_signal="LOW",
+        evidence_support_signal="NOT_REQUIRED",
+        reason="default v3 route avoids CoT and full agents without clear trigger",
+        sample=sample,
+        matched_markers=markers,
+        strong_markers=strong_markers,
+        weak_visual_markers=weak_visual_markers,
+    )
+
+
 def fallback_route(route: str) -> str | None:
     """返回当前 route 的下一层 fallback，最多升一级。"""
     if route == LOW_ROUTE:
@@ -245,14 +319,10 @@ def should_fallback(prediction: str, raw_output: str, route: str) -> tuple[bool,
 
 def _is_low_complexity(sample: VQARADSample) -> bool:
     """识别适合 Direct 的简单闭合视觉题。"""
-    return sample.answer_type.upper() == "CLOSED" and sample.question_type.upper() in {
-        "PRES",
-        "MODALITY",
-        "PLANE",
-        "ORGAN",
-        "COUNT",
-        "COLOR",
-    }
+    simple_types = {"PRES", "MODALITY", "PLANE", "ORGAN", "COUNT", "COLOR"}
+    return sample.answer_type.upper() == "CLOSED" and bool(
+        _question_type_set(sample) & simple_types
+    )
 
 
 def _is_high_complexity(sample: VQARADSample, markers: list[str]) -> bool:
@@ -325,6 +395,24 @@ def _matched_visual_description_markers(question: str) -> list[str]:
         "view",
     )
     return [marker for marker in markers if marker in question]
+
+
+def _question_type_set(sample: VQARADSample) -> set[str]:
+    """把 `POS, PRES` 这类组合 question_type 规整成集合。"""
+    return {
+        part.strip().upper()
+        for part in sample.question_type.split(",")
+        if part.strip()
+    }
+
+
+def _is_direct_short_answer_question(answer_type: str, question_types: set[str]) -> bool:
+    """识别 v3 中应避免 CoT 的短答案视觉题。"""
+    direct_types = {"PRES", "ORGAN", "MODALITY", "PLANE", "COUNT", "COLOR", "OTHER"}
+    reasoning_types = {"POS", "SIZE", "ATTRIB", "ABN"}
+    return bool(question_types & direct_types) and not bool(
+        question_types & reasoning_types
+    ) and answer_type in {"OPEN", "CLOSED"}
 
 
 def _decision(

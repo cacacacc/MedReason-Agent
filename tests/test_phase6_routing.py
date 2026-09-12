@@ -106,3 +106,45 @@ def test_rule_based_v2_keeps_strong_diagnostic_question_high() -> None:
     assert decision.route == HIGH_ROUTE
     assert decision.complexity == "HIGH"
     assert "diagnosis" in decision.signals["strong_medical_markers"]
+
+
+def test_rule_based_v3_routes_abnormality_question_to_multi_agent() -> None:
+    decision = decide_rule_based_route(
+        _sample(
+            question="What abnormality is seen in the chest?",
+            answer_type="OPEN",
+            question_type="ABN",
+        ),
+        policy="rule_based_v3",
+    )
+
+    assert decision.route == HIGH_ROUTE
+    assert decision.complexity == "HIGH"
+
+
+def test_rule_based_v3_keeps_explicit_visual_reasoning_in_cot() -> None:
+    decision = decide_rule_based_route(
+        _sample(
+            question="Where is the lesion located?",
+            answer_type="OPEN",
+            question_type="POS, PRES",
+        ),
+        policy="rule_based_v3",
+    )
+
+    assert decision.route == MEDIUM_ROUTE
+    assert decision.complexity == "MEDIUM"
+
+
+def test_rule_based_v3_routes_open_short_answer_pres_to_direct() -> None:
+    decision = decide_rule_based_route(
+        _sample(
+            question="What is in the left apex?",
+            answer_type="OPEN",
+            question_type="PRES",
+        ),
+        policy="rule_based_v3",
+    )
+
+    assert decision.route == LOW_ROUTE
+    assert decision.complexity == "LOW"
