@@ -158,6 +158,17 @@ Separate Verifier：
 python scripts/run_phase7_process_verification.py --config configs/experiments/exp07_separate_verifier_supervisor_multi_agent_qwen_7b_4090d_pmc10k_300.yaml
 ```
 
+当前 Separate Verifier 配置已升级为 v2：
+
+```text
+experiment_id: exp07_separate_verifier_supervisor_multi_agent_qwen_7b_4090d_pmc10k_300_v2
+prompt_version: phase7_process_verification_v2
+prompt_contract: separate_verifier_process_level_supervisor_candidate_parser_fixed_v2
+result_dir: Results/exp07_separate_verifier_supervisor_multi_agent_qwen_7b_4090d_pmc10k_300_v2
+```
+
+这样可以避开旧 `predictions.jsonl` 的 resume 缓存，确保修复后的 parser 和 verifier prompt 被真正执行。
+
 ## 通过标准
 
 Separate Verifier 比 Self-Reflection 更可靠，需要满足：
@@ -240,7 +251,7 @@ Verifier detection（修复前统计口径，重跑后以新 metrics 为准）�
 当前 Separate Verifier 出现 process_verdict=PASS 300，但 revision_rate=100% 的不一致信号。
 原因是早期 parser 在 keep_decision=PASS 的 verifier schema 下，仍可能让 raw decision 字段覆盖 verdict。
 代码已修正：Separate Verifier 现在优先使用 verdict / recommended_action。
-因此 Separate Verifier 300 条建议用修复后的代码重跑一次。
+Separate Verifier 配置已升级到 v2 输出目录，因此建议用修复后的代码重跑一次。
 ```
 
 下一步调参方向：

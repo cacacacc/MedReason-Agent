@@ -1,5 +1,5 @@
-experiment_id: exp07_separate_verifier_supervisor_multi_agent_qwen_7b_4090d_pmc10k_300
-name: Phase 7 Separate Process Verifier - SupervisorMultiAgent Qwen 2.5 VL 7B 4090D PMC 10k 300 Samples
+experiment_id: exp07_separate_verifier_supervisor_multi_agent_qwen_7b_4090d_pmc10k_300_v2
+name: Phase 7 Separate Process Verifier v2 - SupervisorMultiAgent Qwen 2.5 VL 7B 4090D PMC 10k 300 Samples
 phase: 7
 inherits: configs/base.yaml
 
@@ -9,8 +9,8 @@ method:
   model_id: /root/autodl-tmp/models/Qwen2.5-VL-7B-Instruct
   torch_dtype: bfloat16
   device_map: auto
-  prompt_version: phase7_process_verification_v1
-  prompt_contract: separate_verifier_process_level_supervisor_candidate_v1
+  prompt_version: phase7_process_verification_v2
+  prompt_contract: separate_verifier_process_level_supervisor_candidate_parser_fixed_v2
   agent_mode: supervisor_multi_agent
   verification_mode: separate_verifier
   selective_verification: all
@@ -45,6 +45,6 @@ generation:
   max_new_tokens: 256
 
 outputs:
-  result_dir: Results/exp07_separate_verifier_supervisor_multi_agent_qwen_7b_4090d_pmc10k_300
+  result_dir: Results/exp07_separate_verifier_supervisor_multi_agent_qwen_7b_4090d_pmc10k_300_v2
   prediction_file: predictions.jsonl
   metrics_file: metrics.json
