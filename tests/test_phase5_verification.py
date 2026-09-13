@@ -124,6 +124,17 @@ def test_parse_separate_verifier_prioritizes_verdict_over_raw_decision() -> None
     assert feedback["verdict"] == "PASS"
 
 
+def test_parse_separate_verifier_ignores_raw_decision_without_schema_fields() -> None:
+    feedback = parse_process_feedback(
+        '{"decision": "REVISE", "step_results": [], "error_types": []}',
+        keep_decision="PASS",
+    )
+
+    assert feedback["decision"] == "PASS"
+    assert feedback["verdict"] == "PASS"
+    assert feedback["recommended_action"] == ""
+
+
 def test_self_reflection_keeps_candidate_when_decision_keep() -> None:
     result = Phase5VerificationAgent(
         backend=MockVLMBackend(),

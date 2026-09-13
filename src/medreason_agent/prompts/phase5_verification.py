@@ -400,10 +400,10 @@ def _normalize_feedback(parsed: dict[str, Any], keep_decision: str) -> dict[str,
     verdict = _normalize_verdict(str(parsed.get("verdict", "")))
     recommended_action = _normalize_action(str(parsed.get("recommended_action", "")))
     raw_decision = str(parsed.get("decision", "")).upper()
-    if keep_decision == "PASS" and recommended_action:
-        decision = recommended_action
-    elif keep_decision == "PASS" and verdict:
-        decision = verdict
+    if keep_decision == "PASS":
+        # Separate Verifier 的主控字段只能是 verdict / recommended_action。
+        # 不信任裸 decision 字段，避免 malformed JSON 里的 REVISE 误触发改写。
+        decision = recommended_action or verdict or keep_decision
     elif recommended_action:
         decision = recommended_action
     elif raw_decision:

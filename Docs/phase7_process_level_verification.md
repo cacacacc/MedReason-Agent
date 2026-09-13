@@ -262,3 +262,64 @@ Separate Verifier 配置已升级到 v2 输出目录，因此建议用修复后�
 3. 新增 gated revision：只有 verifier verdict=REVISE 且 error_types 非空时才允许 revision。
 4. 优先报告 verifier_f1、recall、regression rate，而不是只追 final accuracy。
 ```
+
+## Separate Verifier v2 结果与 v3 修复
+
+v2 已经在 300 条 VQA-RAD test 上重跑完成：
+
+| Metric | Separate Verifier v2 |
+|---|---:|
+| Candidate accuracy | 39.00% |
+| Final accuracy | 36.33% |
+| Wrong -> Correct | 4 |
+| Correct -> Wrong | 12 |
+| Net correction | -8 |
+| Correction rate | 2.19% |
+| Regression rate | 10.26% |
+| Correct preservation | 89.74% |
+| Revision rate | 68.00% |
+| Verifier precision | 62.25% |
+| Verifier recall | 69.40% |
+| Verifier F1 | 65.63% |
+| Process verdict counts | PASS: 300 |
+
+这个结果仍然不能作为最终 Phase 7 Separate Verifier 主结果，原因是：
+
+```text
+process_verdict=PASS 300
+但 revision_rate=68%
+```
+
+也就是说，Verifier 顶层判定全部 PASS，但 runner 仍然执行了大量 revision。问题不是模型能力本身，而是 parser 在 Separate Verifier schema 下仍然可能读取非标准的裸 decision 字段，从而让 malformed output 触发 revision。
+
+v3 修复：
+
+```text
+Separate Verifier 只允许 verdict / recommended_action 控制是否 revision。
+裸 decision 字段不再触发 revision。
+如果没有 verdict / recommended_action，则默认 PASS。
+```
+
+v3 配置：
+
+```text
+experiment_id: exp07_separate_verifier_supervisor_multi_agent_qwen_7b_4090d_pmc10k_300_v3
+prompt_version: phase7_process_verification_v3
+prompt_contract: separate_verifier_process_level_supervisor_candidate_strict_schema_gate_v3
+result_dir: Results/exp07_separate_verifier_supervisor_multi_agent_qwen_7b_4090d_pmc10k_300_v3
+```
+
+建议下一次只重跑 Separate Verifier v3：
+
+```bash
+python scripts/run_phase7_process_verification.py --config configs/experiments/exp07_separate_verifier_supervisor_multi_agent_qwen_7b_4090d_pmc10k_300.yaml
+```
+
+v3 通过标准：
+
+```text
+1. revision_rate 必须和 process_verdict / recommended_action 一致。
+2. 如果 process_verdict=PASS 300，则 revision_rate 应接近 0。
+3. Separate Verifier 的 regression_rate 应继续低于 Self-Reflection。
+4. 如果 final accuracy 仍低于 No Verifier，可以把 Separate Verifier 定位为 auditor，而不是默认 answer revision module。
+```
