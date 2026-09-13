@@ -177,3 +177,77 @@ Separate Verifier is better as a process-level auditor, but not necessarily as a
 ```
 
 这和 Phase 5 的负结果不冲突。Phase 5 说明全量 verifier 不适合直接改答案；Phase 7 则检验 verifier 是否能可靠发现和定位 reasoning 错误。
+
+## 当前 300 条结果（修复前）
+
+实验规模：
+
+```text
+Dataset: VQA-RAD test
+Samples: 300
+Candidate: SupervisorMultiAgent
+Retriever: FAISS + BGE-small-en-v1.5 + PMC 10k
+```
+
+主结果（注意：Separate Verifier 的 revision 解析存在修复前不一致，需重跑后作为最终结果）：
+
+| Method | Candidate Acc | Final Acc | Correction | Regression | Verifier F1 | Calls |
+|---|---:|---:|---:|---:|---:|---:|
+| No Verifier | 39.00% | 39.00% | 0.00% | 0.00% | 0.00% | 7.0 |
+| Self-Reflection | 39.00% | 33.33% | 7.10% | 25.64% | 69.48% | 8.81 |
+| Separate Verifier | 39.00% | 37.33% | 3.28% | 9.40% | 75.78% | 9.0 |
+
+详细结果：
+
+| Metric | No Verifier | Self-Reflection | Separate Verifier |
+|---|---:|---:|---:|
+| Final accuracy | 39.00% | 33.33% | 37.33% |
+| Initial errors | 183 | 183 | 183 |
+| Initial correct | 117 | 117 | 117 |
+| Wrong -> Correct | 0 | 13 | 6 |
+| Correct -> Wrong | 0 | 30 | 11 |
+| Wrong -> Wrong | 183 | 170 | 177 |
+| Correct -> Correct | 117 | 87 | 106 |
+| Net correction | 0 | -17 | -5 |
+| Correct preservation | 100.00% | 74.36% | 90.60% |
+| Selective verification rate | 0.00% | 100.00% | 100.00% |
+| Revision rate | 0.00% | 81.00% | 100.00% |
+| Mean total tokens | 6555.82 | 11171.17 | 12060.52 |
+| Mean latency | 7.95 s | 14.47 s | 16.97 s |
+
+Verifier detection（修复前统计口径，重跑后以新 metrics 为准）：
+
+| Method | Precision | Recall | F1 | TP | FP | FN | TN |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| No Verifier | 0.00% | 0.00% | 0.00% | 0 | 0 | 183 | 117 |
+| Self-Reflection | 60.91% | 80.87% | 69.48% | 148 | 95 | 35 | 22 |
+| Separate Verifier | 61.00% | 100.00% | 75.78% | 183 | 117 | 0 | 0 |
+
+当前临时结论：
+
+```text
+1. Separate Verifier 的修复前 detection F1 高于 Self-Reflection：75.78% vs 69.48%。
+2. Separate Verifier 的修复前 recall 达到 100%，但该数值受到 detection 统计口径影响。
+3. Separate Verifier 的 regression 明显低于 Self-Reflection：9.40% vs 25.64%。
+4. 但两者 final accuracy 都低于 No Verifier，说明当前 verifier 适合作为 auditor，不适合默认 revision。
+5. Self-Reflection 过度修改最严重：修正 13 条，但误改 30 条，net correction=-17。
+6. Separate Verifier 更可靠：修正 6 条，误改 11 条，net correction=-5，但仍不能直接作为答案改写模块。
+```
+
+实现注意：
+
+```text
+当前 Separate Verifier 出现 process_verdict=PASS 300，但 revision_rate=100% 的不一致信号。
+原因是早期 parser 在 keep_decision=PASS 的 verifier schema 下，仍可能让 raw decision 字段覆盖 verdict。
+代码已修正：Separate Verifier 现在优先使用 verdict / recommended_action。
+因此 Separate Verifier 300 条建议用修复后的代码重跑一次。
+```
+
+下一步调参方向：
+
+```text
+1. 不再跑 full verification + unconditional revision。
+2. 保留 Separate Verifier 作为 process-level auditor。
+3. 新增 gated revision：只有 verifier verdict=REVISE 且 error_types 非空时才允许 revision。
+4. 优先报告 verifier_f1、recall、regression rate，而不是只追 final accuracy。
+```

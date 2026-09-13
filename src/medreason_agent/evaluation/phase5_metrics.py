@@ -234,8 +234,9 @@ def _verifier_detection_metrics(records: list[dict[str, Any]]) -> dict[str, int 
     """用 candidate correctness 弱监督评估 verifier 是否定位到错误。
 
     Phase 7 的核心是 process-level error detection。没有人工 step label 时，先把
-    candidate_correct=False 视为样本级 process error proxy；Verifier/Reflection 只要输出
-    REVISE、error_types，或 step_results 中出现 UNSUPPORTED/CONTRADICTED，就记为 detected。
+    candidate_correct=False 视为样本级 process error proxy；Verifier/Reflection 只有输出
+    REVISE 或明确 error_types 时才记为 detected。单独的 step status 不计入，因为有些模型会
+    在总 verdict=PASS 时仍输出 UNCERTAIN/UNSUPPORTED step，容易造成全量误检。
     """
     true_positive = 0
     false_positive = 0
@@ -273,13 +274,7 @@ def _process_error_detected(record: dict[str, Any]) -> bool:
     critic_decision = str(record.get("critic_decision") or "").upper()
     if "REVISE" in {decision, verdict, critic_decision}:
         return True
-    if record.get("process_error_types"):
-        return True
-    return any(
-        isinstance(item, dict)
-        and str(item.get("status", "")).upper() in {"UNSUPPORTED", "CONTRADICTED"}
-        for item in record.get("process_step_results", [])
-    )
+    return bool(record.get("process_error_types"))
 
 
 def _empty_recovery_counts() -> dict[str, int | float]:

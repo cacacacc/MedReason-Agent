@@ -163,6 +163,12 @@ F. Confidence Alignment
 Return at least one step_result for each checked layer. Use step_id prefixes:
 obs_, evidence_, reason_, unsupported_, contradiction_, confidence_.
 
+Decision rule:
+- Use verdict=REVISE when any step has status UNSUPPORTED or CONTRADICTED.
+- Use verdict=REVISE when any step has a non-null error_type.
+- Use verdict=PASS only when all checked layers are supported or not applicable.
+- recommended_action must be identical to verdict.
+
 Allowed error_types:
 PERCEPTION_ERROR, RETRIEVAL_ERROR, LOGICAL_ERROR, UNSUPPORTED_CLAIM,
 CONTRADICTION, OVERCONFIDENCE
@@ -394,7 +400,11 @@ def _normalize_feedback(parsed: dict[str, Any], keep_decision: str) -> dict[str,
     verdict = _normalize_verdict(str(parsed.get("verdict", "")))
     recommended_action = _normalize_action(str(parsed.get("recommended_action", "")))
     raw_decision = str(parsed.get("decision", "")).upper()
-    if recommended_action:
+    if keep_decision == "PASS" and recommended_action:
+        decision = recommended_action
+    elif keep_decision == "PASS" and verdict:
+        decision = verdict
+    elif recommended_action:
         decision = recommended_action
     elif raw_decision:
         decision = _normalize_decision(raw_decision, keep_decision)

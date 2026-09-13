@@ -87,6 +87,7 @@ def test_phase5_prompt_builders_use_required_trace_inputs() -> None:
     assert "Evidence Grounding" in verifier_prompt
     assert "Unsupported Claim" in verifier_prompt
     assert "Confidence Alignment" in verifier_prompt
+    assert "recommended_action must be identical to verdict" in verifier_prompt
 
 
 def test_parse_process_feedback_json() -> None:
@@ -107,6 +108,20 @@ def test_parse_process_feedback_json() -> None:
     assert feedback["grounding_score"] == 0.82
     assert feedback["error_types"] == ["LOGICAL_ERROR"]
     assert feedback["revision_instruction"] == "shorten"
+
+
+def test_parse_separate_verifier_prioritizes_verdict_over_raw_decision() -> None:
+    feedback = parse_process_feedback(
+        '{"verdict": "PASS", '
+        '"decision": "REVISE", '
+        '"step_results": [], '
+        '"error_types": [], '
+        '"revision_instruction": ""}',
+        keep_decision="PASS",
+    )
+
+    assert feedback["decision"] == "PASS"
+    assert feedback["verdict"] == "PASS"
 
 
 def test_self_reflection_keeps_candidate_when_decision_keep() -> None:
@@ -208,3 +223,44 @@ def test_phase5_metrics_count_corrections_and_regressions() -> None:
     assert metrics["verifier_precision"] == 0.5
     assert metrics["verifier_recall"] == 1.0
     assert metrics["verifier_f1"] == 2 / 3
+
+
+def test_phase5_verifier_detection_requires_explicit_error_signal() -> None:
+    metrics = summarize_phase5_metrics(
+        [
+            {
+                "candidate_correct": False,
+                "correct": False,
+                "selective_verification_applied": True,
+                "revision_applied": False,
+                "candidate_hallucination": False,
+                "final_hallucination": False,
+                "process_verdict": "PASS",
+                "process_recommended_action": "",
+                "process_error_types": [],
+                "process_step_results": [
+                    {
+                        "step_id": "unsupported_1",
+                        "status": "UNSUPPORTED",
+                        "error_type": None,
+                    }
+                ],
+            },
+            {
+                "candidate_correct": False,
+                "correct": False,
+                "selective_verification_applied": True,
+                "revision_applied": False,
+                "candidate_hallucination": False,
+                "final_hallucination": False,
+                "process_verdict": "REVISE",
+                "process_recommended_action": "REVISE",
+                "process_error_types": ["LOGICAL_ERROR"],
+                "process_step_results": [],
+            },
+        ]
+    )
+
+    assert metrics["verifier_detection"]["true_positive"] == 1
+    assert metrics["verifier_detection"]["false_negative"] == 1
+    assert metrics["verifier_recall"] == 0.5
