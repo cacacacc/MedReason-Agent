@@ -26,6 +26,44 @@ _YES_NO_QUESTION_PREFIXES = (
 )
 _YES_PATTERN = re.compile(r"^\s*(yes|y)\b", flags=re.IGNORECASE)
 _NO_PATTERN = re.compile(r"^\s*(no|n)\b", flags=re.IGNORECASE)
+_YES_EQUIVALENTS = {
+    "present",
+    "visible",
+    "seen",
+    "shown",
+    "true",
+    "positive",
+}
+_NO_EQUIVALENTS = {
+    "absent",
+    "not present",
+    "not visible",
+    "not seen",
+    "negative",
+    "false",
+}
+_NEGATIVE_PHRASES = (
+    "there is no",
+    "there are no",
+    "no evidence of",
+    "without evidence of",
+    "not identified",
+    "not demonstrated",
+    "not visualized",
+    "is absent",
+    "are absent",
+)
+_POSITIVE_PHRASES = (
+    "there is",
+    "there are",
+    "evidence of",
+    "is present",
+    "are present",
+    "is seen",
+    "are seen",
+    "is visible",
+    "are visible",
+)
 
 
 def is_yes_no_question(question: str) -> bool:
@@ -53,6 +91,15 @@ def canonical_short_answer(answer: str, question: str = "") -> str:
             return "yes"
         if no_match:
             return "no"
+        normalized_line = " ".join(first_line.lower().strip().strip(" .").split())
+        if normalized_line in _NO_EQUIVALENTS or any(
+            phrase in normalized_line for phrase in _NEGATIVE_PHRASES
+        ):
+            return "no"
+        if normalized_line in _YES_EQUIVALENTS or any(
+            phrase in normalized_line for phrase in _POSITIVE_PHRASES
+        ):
+            return "yes"
     return first_line.strip().strip(" .")
 
 

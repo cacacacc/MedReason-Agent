@@ -15,6 +15,7 @@ VANILLA_COT_V1 = """Answer the medical question based on the image.
 Question: {question}
 
 Think step by step, then provide the final short answer.
+Use at most two short reasoning steps. Do not add unrelated findings.
 
 Use this final line:
 Final Answer: provide only the short final answer. For yes/no questions,
@@ -32,10 +33,11 @@ Question: {question}
 Use the following format:
 
 Observation: describe only visual findings that are visible in the image.
-Reasoning: explain how the visual findings relate to the question.
+Reasoning: use at most two short steps to answer the question.
 Final Answer: provide only the short final answer. For yes/no questions,
 answer exactly yes or no. For open questions, answer with one short phrase.
 
+Do not introduce diagnoses unless the question explicitly asks for diagnosis.
 Do not provide clinical advice."""
 
 

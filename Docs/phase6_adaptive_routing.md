@@ -1152,5 +1152,54 @@ v5 是当前最佳主方法。
 如果继续，v6 应该只作为分析实验：
 1. 检查 v5 仍然 selected=direct 且 oracle=structured_cot 的 9 条样本。
 2. 检查 v5 selected=structured_cot 且 oracle=direct 的 43 条样本。
+
+## Phase 6 v6：Direct/CoT Dominant
+
+v6 的目标是继续提高 Phase 6 accuracy，而不是增加更多 agent 调用。
+
+基于 v5 full 的 oracle routing：
+
+```text
+v5 accuracy: 55.88%
+oracle accuracy: 61.20%
+under-reasoning rate: 3.99%
+over-reasoning rate: 9.98%
+full_multi_agent route accuracy: 33.33%
+```
+
+因此 v6 做两点调整：
+
+```text
+1. 保留 Direct-dominant 主体。
+2. 将低收益 full_multi_agent 触发降级为 Structured CoT。
+```
+
+v6 不再把强诊断触发词直接送入完整 Multi-Agent，因为当前 VQA-RAD 上 full route 样本少且准确率低。对于 benchmark accuracy，短 Structured CoT 更稳。
+
+新增配置：
+
+```bash
+python scripts/run_phase6_adaptive_routing.py --config configs/experiments/exp06_rule_based_adaptive_routing_v6_qwen_7b_4090d_pmc10k_100.yaml
+
+python scripts/run_phase6_adaptive_routing.py --config configs/experiments/exp06_rule_based_adaptive_routing_v6_qwen_7b_4090d_pmc10k_full.yaml
+```
+
+建议先跑 100 条：
+
+```text
+如果 v6_100 accuracy >= v5_100 的 57%，再跑 full。
+如果 v6_100 低于 55%，不要跑 full，说明禁用 full 或 CoT 触发词没有收益。
+```
+
+v6 主要观察：
+
+```text
+accuracy
+route_distribution
+route_accuracy.direct
+route_accuracy.structured_cot
+mean_agent_calls
+over_reasoning_rate / under_reasoning_rate（跑完 oracle 分析后）
+```
 3. 如果没有非常稳定的新规律，就停止 rule-based tuning，进入论文结果整理或 LLM-based Supervisor 对照。
 ```

@@ -64,12 +64,14 @@ class Phase5VerificationAgent:
         deterministic_answer_gate: bool = False,
         selective_verification: str = "all",
         question_routing: str = "none",
+        apply_revision: bool = True,
     ) -> None:
         if verification_mode not in PHASE5_MODES:
             raise ValueError(f"Unsupported Phase 5 verification_mode: {verification_mode}")
         self.backend = backend
         self.verification_mode = verification_mode
         self.selective_verification = selective_verification
+        self.apply_revision = apply_revision
         self.candidate_agent = SupervisorMultiAgent(
             backend=backend,
             retrieval_pipeline=retrieval_pipeline,
@@ -149,7 +151,7 @@ class Phase5VerificationAgent:
         feedback = parse_process_feedback(reflection.raw_output, keep_decision="KEEP")
         revision = None
         prediction = candidate.prediction
-        if feedback["decision"] == "REVISE":
+        if self.apply_revision and feedback["decision"] == "REVISE":
             revision = self._generate(
                 sample,
                 build_self_revision_prompt(
@@ -212,7 +214,7 @@ class Phase5VerificationAgent:
         feedback = parse_process_feedback(verifier.raw_output, keep_decision="PASS")
         revision = None
         prediction = candidate.prediction
-        if feedback["decision"] == "REVISE":
+        if self.apply_revision and feedback["decision"] == "REVISE":
             revision = self._generate(
                 sample,
                 build_verifier_revision_prompt(

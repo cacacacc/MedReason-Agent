@@ -116,6 +116,11 @@ You must not generate a new answer. Your job is only to detect, localize,
 classify, and recommend correction for process-level errors in the candidate
 reasoning and answer.
 
+Be a skeptical auditor. Do not assume the candidate is correct. PASS is only
+allowed when the candidate reasoning is explicitly grounded in the provided
+Vision Findings and Retrieved Evidence. If a required support link is missing,
+mark the relevant step as UNSUPPORTED or UNCERTAIN and assign an error_type.
+
 Question:
 {question}
 
@@ -166,6 +171,7 @@ obs_, evidence_, reason_, unsupported_, contradiction_, confidence_.
 Decision rule:
 - Use verdict=REVISE when any step has status UNSUPPORTED or CONTRADICTED.
 - Use verdict=REVISE when any step has a non-null error_type.
+- Use verdict=REVISE when a step is UNCERTAIN because support is insufficient.
 - Use verdict=PASS only when all checked layers are supported or not applicable.
 - recommended_action must be identical to verdict.
 

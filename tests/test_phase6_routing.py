@@ -269,3 +269,44 @@ def test_rule_based_v5_keeps_strong_diagnostic_question_high() -> None:
 
     assert decision.route == HIGH_ROUTE
     assert decision.complexity == "HIGH"
+
+
+def test_rule_based_v6_downgrades_strong_diagnostic_question_to_cot() -> None:
+    decision = decide_rule_based_route(
+        _sample(
+            question="What diagnosis is most consistent with this finding?",
+            answer_type="OPEN",
+            question_type="OTHER",
+        ),
+        policy="rule_based_v6",
+    )
+
+    assert decision.route == MEDIUM_ROUTE
+    assert decision.complexity == "MEDIUM"
+
+
+def test_rule_based_v6_keeps_simple_pres_direct() -> None:
+    decision = decide_rule_based_route(
+        _sample(
+            question="Is there evidence of rib fracture?",
+            answer_type="CLOSED",
+            question_type="PRES",
+        ),
+        policy="rule_based_v6",
+    )
+
+    assert decision.route == LOW_ROUTE
+    assert decision.complexity == "LOW"
+
+
+def test_rule_based_v6_routes_precision_visual_question_to_cot() -> None:
+    decision = decide_rule_based_route(
+        _sample(
+            question="Which side has more prominent calcification?",
+            answer_type="OPEN",
+            question_type="ATTRIB",
+        ),
+        policy="rule_based_v6",
+    )
+
+    assert decision.route == MEDIUM_ROUTE

@@ -54,6 +54,8 @@ def decide_rule_based_route(
         return decide_rule_based_route_v4(sample)
     if policy == "rule_based_v5":
         return decide_rule_based_route_v5(sample)
+    if policy == "rule_based_v6":
+        return decide_rule_based_route_v6(sample)
     if policy != "rule_based_v1":
         raise ValueError(f"Unsupported Phase 6 routing policy: {policy}")
 
@@ -453,6 +455,113 @@ def decide_rule_based_route_v5(sample: VQARADSample) -> RoutingDecision:
     )
 
 
+def decide_rule_based_route_v6(sample: VQARADSample) -> RoutingDecision:
+    """Phase6 v6 路由规则。
+
+    v5 full 结果显示完整 Multi-Agent 的样本数很少且 route accuracy 偏低。v6 为了追主指标，
+    改成 Direct / Structured CoT 双路策略：保留 v5 命中的 CoT oracle-gap 触发词，
+    但把强诊断触发词降级到 CoT，而不是进入 full agent，避免 RAG/verifier 改写带来漂移。
+    """
+    question_types = _question_type_set(sample)
+    answer_type = sample.answer_type.upper()
+    question = sample.question.lower()
+    markers = _matched_markers(question)
+    strong_markers = _matched_strong_medical_markers(question)
+    v4_full_markers = _matched_v4_full_markers(question)
+    v4_cot_markers = _matched_v4_cot_markers(question)
+    v5_cot_markers = _matched_v5_oracle_gap_cot_markers(question)
+    v6_cot_markers = _matched_v6_precision_cot_markers(question)
+    weak_visual_markers = _matched_visual_description_markers(question)
+
+    if v5_cot_markers or v6_cot_markers:
+        return _decision(
+            route=MEDIUM_ROUTE,
+            complexity="MEDIUM",
+            confidence_signal="MEDIUM",
+            uncertainty_signal="MEDIUM",
+            evidence_support_signal="OPTIONAL",
+            reason="v6 oracle-gap and precision visual reasoning trigger",
+            sample=sample,
+            matched_markers=markers,
+            strong_markers=strong_markers,
+            weak_visual_markers=weak_visual_markers,
+        )
+
+    if v4_full_markers:
+        return _decision(
+            route=MEDIUM_ROUTE,
+            complexity="MEDIUM",
+            confidence_signal="MEDIUM",
+            uncertainty_signal="MEDIUM",
+            evidence_support_signal="OPTIONAL",
+            reason="v6 downgrades low-yield full-agent diagnosis trigger to structured CoT",
+            sample=sample,
+            matched_markers=markers,
+            strong_markers=strong_markers,
+            weak_visual_markers=weak_visual_markers,
+        )
+
+    if "SIZE" in question_types or (
+        "ATTRIB" in question_types and (answer_type == "CLOSED" or v4_cot_markers)
+    ):
+        return _decision(
+            route=MEDIUM_ROUTE,
+            complexity="MEDIUM",
+            confidence_signal="MEDIUM",
+            uncertainty_signal="MEDIUM",
+            evidence_support_signal="OPTIONAL",
+            reason="v6 size or closed attribute question benefits from short structured CoT",
+            sample=sample,
+            matched_markers=markers,
+            strong_markers=strong_markers,
+            weak_visual_markers=weak_visual_markers,
+        )
+
+    if v4_cot_markers and not question_types & {"PLANE", "MODALITY", "ORGAN"}:
+        return _decision(
+            route=MEDIUM_ROUTE,
+            complexity="MEDIUM",
+            confidence_signal="MEDIUM",
+            uncertainty_signal="MEDIUM",
+            evidence_support_signal="OPTIONAL",
+            reason="v6 visual comparison trigger outside simple modality/organ questions",
+            sample=sample,
+            matched_markers=markers,
+            strong_markers=strong_markers,
+            weak_visual_markers=weak_visual_markers,
+        )
+
+    if _is_low_complexity(sample) or _is_direct_short_answer_question(
+        answer_type=answer_type,
+        question_types=question_types,
+    ):
+        return _decision(
+            route=LOW_ROUTE,
+            complexity="LOW",
+            confidence_signal="HIGH",
+            uncertainty_signal="LOW",
+            evidence_support_signal="NOT_REQUIRED",
+            reason="v6 direct-dominant short-answer visual question",
+            sample=sample,
+            matched_markers=markers,
+            strong_markers=strong_markers,
+            weak_visual_markers=weak_visual_markers,
+        )
+
+    return _decision(
+        route=LOW_ROUTE,
+        complexity="LOW",
+        confidence_signal="MEDIUM",
+        uncertainty_signal="LOW",
+        evidence_support_signal="NOT_REQUIRED",
+        reason="v6 default direct route avoids over-reasoning",
+        sample=sample,
+        matched_markers=markers,
+        strong_markers=strong_markers,
+        weak_visual_markers=weak_visual_markers,
+    )
+
+
 def fallback_route(route: str) -> str | None:
     """返回当前 route 的下一层 fallback，最多升一级。"""
     if route == LOW_ROUTE:
@@ -607,6 +716,35 @@ def _matched_v5_oracle_gap_cot_markers(question: str) -> list[str]:
         "gastric bubble",
         "sequence of this mri",
         "left or right",
+    )
+    return [marker for marker in markers if marker in question]
+
+
+def _matched_v6_precision_cot_markers(question: str) -> list[str]:
+    """匹配 v6 额外保留的高精度 CoT 触发词。
+
+    这些词更偏向视觉比较、定位和影像序列判断，通常只需要短 CoT，不需要完整 agent 链。
+    """
+    markers = (
+        "which is larger",
+        "which is smaller",
+        "which is more",
+        "more prominent",
+        "less prominent",
+        "left or right",
+        "right or left",
+        "which side",
+        "on which side",
+        "how many",
+        "how large",
+        "measure",
+        "measurement",
+        "calcification",
+        "calcified",
+        "hypodense",
+        "hyperdense",
+        "hyperintense",
+        "hypointense",
     )
     return [marker for marker in markers if marker in question]
 

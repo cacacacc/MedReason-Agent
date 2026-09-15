@@ -14,6 +14,27 @@ def test_exact_match_canonicalizes_yes_no_sentence() -> None:
     )
 
 
+def test_exact_match_canonicalizes_yes_no_negative_phrase() -> None:
+    assert exact_match(
+        "There is no pleural effusion.",
+        "No",
+        question="Is there pleural effusion?",
+    )
+
+
+def test_exact_match_canonicalizes_yes_no_presence_phrase() -> None:
+    assert exact_match(
+        "The mass is present.",
+        "Yes",
+        question="Is there a mass?",
+    )
+
+
+def test_exact_match_canonicalizes_absent_present_tokens() -> None:
+    assert exact_match("absent", "No", question="Is pneumothorax present?")
+    assert exact_match("present", "Yes", question="Is pneumothorax present?")
+
+
 def test_normalize_answer_lowercases_and_removes_articles() -> None:
     assert normalize_answer("The Right Lung.") == "right lung"
 

@@ -165,6 +165,23 @@ def test_separate_verifier_revision_is_generated_by_reasoner() -> None:
     ]
 
 
+def test_separate_verifier_audit_only_keeps_candidate_when_revise_detected() -> None:
+    result = Phase5VerificationAgent(
+        backend=RevisingVerifierBackend(),
+        verification_mode="separate_verifier",
+        apply_revision=False,
+    ).run(_sample(answer="no"), max_new_tokens=64)
+
+    assert result.candidate.prediction == "yes"
+    assert result.process_feedback["decision"] == "REVISE"
+    assert result.process_feedback["error_types"] == ["UNSUPPORTED_CLAIM"]
+    assert result.revision_applied is False
+    assert result.prediction == "yes"
+    assert "verifier_guided_revision" not in [
+        call["stage"] for call in result.tool_calls
+    ]
+
+
 def test_selective_risk_rule_can_skip_low_risk_candidate() -> None:
     result = Phase5VerificationAgent(
         backend=MockVLMBackend(),

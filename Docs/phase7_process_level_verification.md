@@ -323,3 +323,85 @@ v3 通过标准：
 3. Separate Verifier 的 regression_rate 应继续低于 Self-Reflection。
 4. 如果 final accuracy 仍低于 No Verifier，可以把 Separate Verifier 定位为 auditor，而不是默认 answer revision module。
 ```
+
+## Separate Verifier v3 结果
+
+v3 已经在 300 条 VQA-RAD test 上完成：
+
+| Metric | Separate Verifier v3 |
+|---|---:|
+| Candidate accuracy | 39.00% |
+| Final accuracy | 39.00% |
+| Wrong -> Correct | 0 |
+| Correct -> Wrong | 0 |
+| Net correction | 0 |
+| Revision rate | 0.00% |
+| Correct preservation | 100.00% |
+| Verifier precision | 0.00% |
+| Verifier recall | 0.00% |
+| Verifier F1 | 0.00% |
+| Process verdict counts | PASS: 300 |
+| Mean total tokens | 9471.96 |
+| Mean latency | 13.29 s |
+
+v3 结论：
+
+```text
+1. parser 严格门控修复成功：process_verdict=PASS 300 时 revision_rate=0。
+2. final accuracy 不再被 verifier 误改写拖低。
+3. 但 Separate Verifier 现在过于保守，全部 PASS，检测不到 183 个 candidate error。
+4. 因此 v3 是安全的 verifier gate，但不是有效的 process-level verifier。
+```
+
+## v4 调参方向：Audit-Only Separate Verifier
+
+Phase 7 需要先把两个能力分开：
+
+```text
+Verifier detection / localization
+Answer revision
+```
+
+v3 说明直接 revision 风险很大；所以 v4 改成：
+
+```text
+Separate Verifier 继续检查每条样本
+但 apply_revision=false
+即使判 REVISE，也不改最终答案
+```
+
+这样可以专门观察：
+
+```text
+verifier_precision
+verifier_recall
+verifier_f1
+process_error_type_counts
+process_step_results 是否能定位 obs/evidence/reason/unsupported/contradiction/confidence
+```
+
+v4 配置：
+
+```text
+experiment_id: exp07_separate_verifier_supervisor_multi_agent_qwen_7b_4090d_pmc10k_300_v4
+prompt_version: phase7_process_verification_v4
+prompt_contract: separate_verifier_process_level_skeptical_audit_only_v4
+apply_revision: false
+result_dir: Results/exp07_separate_verifier_supervisor_multi_agent_qwen_7b_4090d_pmc10k_300_v4
+```
+
+运行：
+
+```bash
+python scripts/run_phase7_process_verification.py --config configs/experiments/exp07_separate_verifier_supervisor_multi_agent_qwen_7b_4090d_pmc10k_300.yaml
+```
+
+v4 判断标准：
+
+```text
+1. final_accuracy 应保持 39.00% 左右，因为不做 revision。
+2. revision_rate 应为 0。
+3. verifier_f1 应明显高于 v3 的 0。
+4. 如果 verifier_f1 接近或超过 Self-Reflection 的 69.48%，则说明 Separate Verifier 作为 auditor 成立。
+5. 如果 verifier_f1 仍接近 0，说明当前 Qwen 7B + prompt 不足以做可靠 process verifier，需要 Phase 7 v5 引入 few-shot verifier examples 或更强 verifier backbone。
+```

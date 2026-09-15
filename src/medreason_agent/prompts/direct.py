@@ -13,6 +13,8 @@ Question: {question}
 Return only the short final answer.
 For yes/no questions, answer exactly yes or no.
 For open questions, answer with one short phrase, not a sentence.
+Do not mention uncertainty unless the image is impossible to interpret.
+Do not add explanations, punctuation-heavy text, or full sentences.
 Do not provide clinical advice."""
 
 

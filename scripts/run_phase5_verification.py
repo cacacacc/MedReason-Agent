@@ -265,6 +265,7 @@ def is_current_record(record: dict[str, Any], method: dict[str, Any]) -> bool:
         )
         and record.get("record_protocol_version") == "phase5_candidate_post_verification_v3"
         and record.get("verification_mode") == method["verification_mode"]
+        and bool(record.get("apply_revision", True)) == bool(method.get("apply_revision", True))
         and "candidate_prediction" in record
         and "candidate_correct" in record
         and "process_feedback" in record
@@ -302,6 +303,7 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
         deterministic_answer_gate=bool(method.get("deterministic_answer_gate", False)),
         selective_verification=str(method.get("selective_verification", "all")),
         question_routing=str(method.get("question_routing", "none")),
+        apply_revision=bool(method.get("apply_revision", True)),
     )
     samples = load_vqa_rad_split(
         split=dataset_config["split"],
@@ -345,6 +347,7 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
                 "agent_mode": method["agent_mode"],
                 "question_routing": method.get("question_routing", "none"),
                 "selective_verification": method.get("selective_verification", "all"),
+                "apply_revision": bool(method.get("apply_revision", True)),
                 "latency_ms": round((time.perf_counter() - start) * 1000, 3),
             },
         )
@@ -372,6 +375,7 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
             "question_routing": method.get("question_routing", "none"),
             "verification_mode": method["verification_mode"],
             "selective_verification": method.get("selective_verification", "all"),
+            "apply_revision": bool(method.get("apply_revision", True)),
             "rag_mode": method.get("rag_mode", ""),
             "retriever": retrieval_config.get("retriever"),
             "top_k": retrieval_config.get("top_k"),
