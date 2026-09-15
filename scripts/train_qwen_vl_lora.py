@@ -12,6 +12,7 @@ Adaptive Routing 使用微调后的 backbone。
 from __future__ import annotations
 
 import argparse
+import inspect
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -185,6 +186,64 @@ def build_lora_config(config: dict[str, Any]):
     )
 
 
+def build_training_arguments(training_arguments_cls, output_dir: Path, config: dict[str, Any]):
+    """构造兼容不同 transformers 版本的 TrainingArguments。
+
+    AutoDL 镜像里的 transformers 版本可能偏旧。这里先准备完整参数，再根据当前
+    `TrainingArguments.__init__` 的签名过滤不支持的字段，并处理
+    `eval_strategy` / `evaluation_strategy` 这类版本命名差异。
+    """
+    training_config = config["training"]
+    signature = inspect.signature(training_arguments_cls.__init__)
+    supported = set(signature.parameters)
+    warmup_ratio = float(training_config.get("warmup_ratio", 0.03))
+
+    kwargs: dict[str, Any] = {
+        "output_dir": str(output_dir),
+        "num_train_epochs": float(training_config.get("num_train_epochs", 3)),
+        "per_device_train_batch_size": int(
+            training_config.get("per_device_train_batch_size", 1)
+        ),
+        "per_device_eval_batch_size": int(
+            training_config.get("per_device_eval_batch_size", 1)
+        ),
+        "gradient_accumulation_steps": int(
+            training_config.get("gradient_accumulation_steps", 16)
+        ),
+        "learning_rate": float(training_config.get("learning_rate", 2e-4)),
+        "weight_decay": float(training_config.get("weight_decay", 0.0)),
+        "logging_steps": int(training_config.get("logging_steps", 10)),
+        "save_steps": int(training_config.get("save_steps", 100)),
+        "eval_steps": int(training_config.get("eval_steps", 100)),
+        "save_total_limit": int(training_config.get("save_total_limit", 2)),
+        "bf16": bool(training_config.get("bf16", True)),
+        "fp16": bool(training_config.get("fp16", False)),
+        "remove_unused_columns": False,
+        "report_to": list(training_config.get("report_to", [])),
+        "dataloader_num_workers": int(training_config.get("dataloader_num_workers", 0)),
+    }
+    if "warmup_ratio" in supported:
+        kwargs["warmup_ratio"] = warmup_ratio
+    elif "warmup_steps" in supported:
+        # 旧版 transformers 没有 warmup_ratio，就用 0 表示不显式 warmup。
+        kwargs["warmup_steps"] = int(training_config.get("warmup_steps", 0))
+
+    eval_strategy = str(training_config.get("eval_strategy", "steps"))
+    if "eval_strategy" in supported:
+        kwargs["eval_strategy"] = eval_strategy
+    elif "evaluation_strategy" in supported:
+        kwargs["evaluation_strategy"] = eval_strategy
+
+    save_strategy = str(training_config.get("save_strategy", "steps"))
+    if "save_strategy" in supported:
+        kwargs["save_strategy"] = save_strategy
+
+    filtered_kwargs = {
+        key: value for key, value in kwargs.items() if key in supported
+    }
+    return training_arguments_cls(**filtered_kwargs)
+
+
 def run(config_path: Path) -> dict[str, Any]:
     """执行 LoRA 训练并保存 adapter / metrics。"""
     import torch
@@ -233,27 +292,7 @@ def run(config_path: Path) -> dict[str, Any]:
         max_samples=dataset_config.get("max_validation_samples"),
     )
 
-    args = TrainingArguments(
-        output_dir=str(output_dir),
-        num_train_epochs=float(training_config.get("num_train_epochs", 3)),
-        per_device_train_batch_size=int(training_config.get("per_device_train_batch_size", 1)),
-        per_device_eval_batch_size=int(training_config.get("per_device_eval_batch_size", 1)),
-        gradient_accumulation_steps=int(training_config.get("gradient_accumulation_steps", 16)),
-        learning_rate=float(training_config.get("learning_rate", 2e-4)),
-        weight_decay=float(training_config.get("weight_decay", 0.0)),
-        warmup_ratio=float(training_config.get("warmup_ratio", 0.03)),
-        logging_steps=int(training_config.get("logging_steps", 10)),
-        save_steps=int(training_config.get("save_steps", 100)),
-        eval_steps=int(training_config.get("eval_steps", 100)),
-        eval_strategy=str(training_config.get("eval_strategy", "steps")),
-        save_strategy=str(training_config.get("save_strategy", "steps")),
-        save_total_limit=int(training_config.get("save_total_limit", 2)),
-        bf16=bool(training_config.get("bf16", True)),
-        fp16=bool(training_config.get("fp16", False)),
-        remove_unused_columns=False,
-        report_to=list(training_config.get("report_to", [])),
-        dataloader_num_workers=int(training_config.get("dataloader_num_workers", 0)),
-    )
+    args = build_training_arguments(TrainingArguments, output_dir, config)
     trainer = Trainer(
         model=model,
         args=args,

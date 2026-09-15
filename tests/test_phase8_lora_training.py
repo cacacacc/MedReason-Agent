@@ -1,7 +1,7 @@
 import yaml
 
 from medreason_agent.data.vqa_rad import VQARADSample
-from scripts.train_qwen_vl_lora import TrainingExample
+from scripts.train_qwen_vl_lora import TrainingExample, build_training_arguments
 
 
 def _sample() -> VQARADSample:
@@ -41,3 +41,39 @@ def test_phase8_training_config_parses() -> None:
     assert config["phase"] == 8
     assert config["method"]["type"] == "qwen_vl_lora_sft"
     assert config["outputs"]["merge_adapter"] is True
+
+
+def test_build_training_arguments_handles_old_transformers_signature(tmp_path) -> None:
+    class OldTrainingArguments:
+        def __init__(
+            self,
+            output_dir,
+            num_train_epochs,
+            warmup_steps,
+            evaluation_strategy,
+            save_strategy,
+        ) -> None:
+            self.kwargs = {
+                "output_dir": output_dir,
+                "num_train_epochs": num_train_epochs,
+                "warmup_steps": warmup_steps,
+                "evaluation_strategy": evaluation_strategy,
+                "save_strategy": save_strategy,
+            }
+
+    args = build_training_arguments(
+        OldTrainingArguments,
+        tmp_path,
+        {
+            "training": {
+                "num_train_epochs": 2,
+                "warmup_ratio": 0.03,
+                "eval_strategy": "steps",
+                "save_strategy": "steps",
+            }
+        },
+    )
+
+    assert args.kwargs["warmup_steps"] == 0
+    assert args.kwargs["evaluation_strategy"] == "steps"
+    assert args.kwargs["save_strategy"] == "steps"

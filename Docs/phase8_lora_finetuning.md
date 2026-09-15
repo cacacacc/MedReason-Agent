@@ -166,3 +166,21 @@ LoRA Qwen2.5-VL-7B + Phase6 v6
 Domain adaptation improves base VQA ability.
 Adaptive routing further improves reasoning efficiency and route selection.
 ```
+
+## 常见报错：TrainingArguments 不支持 warmup_ratio
+
+如果遇到：
+
+```text
+TypeError: TrainingArguments.__init__() got an unexpected keyword argument 'warmup_ratio'
+```
+
+说明 AutoDL 镜像里的 transformers 版本和本地不完全一致。训练脚本已经做了兼容：
+
+```text
+新版 transformers：使用 warmup_ratio / eval_strategy
+旧版 transformers：自动改用 warmup_steps / evaluation_strategy
+不支持的 TrainingArguments 字段会自动跳过
+```
+
+拉取最新代码后重新运行训练命令即可。
