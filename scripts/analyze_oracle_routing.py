@@ -124,6 +124,9 @@ def build_analysis_rows(
         oracle = oracle_route(route_correctness)
         selected = selected_route(routing)
         depth_error = compare_depth(selected, oracle)
+        routing_decision = routing.get("phase6_routing_decision", {})
+        if not isinstance(routing_decision, dict):
+            routing_decision = {}
         rows.append(
             {
                 "sample_id": sample_id,
@@ -145,6 +148,11 @@ def build_analysis_rows(
                 "selected_route": selected,
                 "routing_matches_oracle": selected == oracle,
                 "depth_error": depth_error,
+                "phase6_routing_reason": routing_decision.get("reason", ""),
+                "phase6_routing_signals": json.dumps(
+                    routing_decision.get("signals", {}),
+                    ensure_ascii=False,
+                ),
                 "phase6_fallback_applied": bool(routing.get("phase6_fallback_applied", False)),
                 "phase6_fallback_reason": routing.get("phase6_fallback_reason", ""),
             }

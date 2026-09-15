@@ -38,6 +38,13 @@ vlm = [
   "qwen-vl-utils>=0.0.8",
   "transformers>=4.45"
 ]
+train = [
+  "accelerate>=0.30",
+  "peft>=0.12",
+  "qwen-vl-utils>=0.0.8",
+  "torch>=2.3",
+  "transformers>=4.45"
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

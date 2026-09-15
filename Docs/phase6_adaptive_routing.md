@@ -1201,5 +1201,113 @@ route_accuracy.structured_cot
 mean_agent_calls
 over_reasoning_rate / under_reasoning_rate（跑完 oracle 分析后）
 ```
+
+## Phase 6 v6 Full 结果
+
+v6 full 已完成 451 条 VQA-RAD test：
+
+```text
+Experiment: exp06_rule_based_adaptive_routing_v6_qwen_7b_4090d_pmc10k_full
+Routing policy: rule_based_v6
+Prompt contract: direct_cot_dominant_no_full_agent_v6
+```
+
+主结果：
+
+| Metric | v5 Full | v6 Full | Change |
+|---|---:|---:|---:|
+| Accuracy | 55.88% | 57.43% | +1.55 |
+| Token F1 | 59.73% | 61.70% | +1.97 |
+| BLEU-1 | 58.66% | 60.55% | +1.89 |
+| Mean agent calls | 1.07 | 1.00 | -0.07 |
+| Fallback rate | 0.00% | 0.00% | 0.00 |
+
+Route distribution：
+
+| Route | Samples | Accuracy |
+|---|---:|---:|
+| direct | 338 | 54.44% |
+| structured_cot | 113 | 66.37% |
+| full_multi_agent | 0 | N/A |
+
+Oracle Routing 分析：
+
+| Metric | v5 Full | v6 Full | Change |
+|---|---:|---:|---:|
+| Oracle accuracy | 61.20% | 61.20% | 0.00 |
+| Routing accuracy | 55.88% | 57.43% | +1.55 |
+| Route-oracle match | 47.23% | 47.01% | -0.22 |
+| Over-reasoning rate | 9.98% | 10.20% | +0.22 |
+| Under-reasoning rate | 3.99% | 3.99% | 0.00 |
+| Unrecoverable error rate | 38.80% | 38.80% | 0.00 |
+
+Selected vs Oracle：
+
+| Selected Route | Oracle direct | Oracle structured_cot | Oracle full_multi_agent | Oracle none |
+|---|---:|---:|---:|---:|
+| direct | 179 | 9 | 5 | 145 |
+| structured_cot | 46 | 33 | 4 | 30 |
+
+结论：
+
+```text
+1. v6 是当前 Phase 6 最高主结果，accuracy 达到 57.43%。
+2. v6 去掉 full_multi_agent 后，accuracy 反而提升，说明 VQA-RAD 上完整 agent 链不是稳定收益来源。
+3. Structured CoT route accuracy 为 66.37%，明显高于 direct route 的 54.44%，说明 v6 的 CoT 触发仍然有效。
+4. v6 与 oracle 的差距为 3.77 个百分点，剩余瓶颈主要是 9 条 direct->structured_cot under-routing 和 46 条 structured_cot->direct over-routing。
+5. v6 可以作为当前 Phase 6 主结果：更高 accuracy、更低 agent calls、更清晰的 adaptive routing 结论。
+```
+
+下一步如果继续优化 Phase 6，应只做小步 v7：
+
+```text
+目标：减少 46 条 structured_cot 但 oracle=direct 的 over-reasoning。
+限制：不能提高 under-reasoning，不能重新引入 full_multi_agent。
+```
+
+### v7 前置分析
+
+v7 不建议直接凭总体 confusion matrix 手写规则。需要先分析：
+
+```text
+structured_cot -> oracle direct 的 46 条样本，是哪些 routing reason / marker 触发的？
+direct -> oracle structured_cot 的 9 条样本，是否有共同问题模式？
+```
+
+已新增脚本：
+
+```text
+scripts/analyze_phase6_route_errors.py
+```
+
+先重新生成带 routing reason/signals 的 oracle 明细：
+
+```bash
+python scripts/analyze_oracle_routing.py \
+  --direct Results/exp01_direct_vlm_qwen_7b_cuda_full/predictions.jsonl \
+  --cot Results/exp02_structured_cot_qwen_7b_4090d_full/predictions.jsonl \
+  --full-agent Results/exp04_supervisor_multi_agent_heuristic_routing_qwen_7b_4090d_pmc10k_full/predictions.jsonl \
+  --routing Results/exp06_rule_based_adaptive_routing_v6_qwen_7b_4090d_pmc10k_full/predictions.jsonl \
+  --output Results/oracle_routing_analysis_v6_full_with_reasons
+```
+
+然后分析路由错误来源：
+
+```bash
+python scripts/analyze_phase6_route_errors.py \
+  --oracle-details Results/oracle_routing_analysis_v6_full_with_reasons/oracle_analysis.csv \
+  --output Results/oracle_routing_analysis_v6_full_with_reasons/route_error_breakdown
+```
+
+重点看输出：
+
+```text
+Results/oracle_routing_analysis_v6_full_with_reasons/route_error_breakdown/route_error_breakdown.md
+```
+
+如果某个 marker / reason 在 `selected=structured_cot oracle=direct` 中高频出现，而在
+`selected=direct oracle=structured_cot` 中很少出现，就可以在 v7 中剪掉它。
+
+如果 over-reasoning 分散在很多 marker 上，不建议做 v7；保留 v6 作为主结果更稳。
 3. 如果没有非常稳定的新规律，就停止 rule-based tuning，进入论文结果整理或 LLM-based Supervisor 对照。
 ```

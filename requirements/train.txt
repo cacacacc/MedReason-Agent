@@ -1,0 +1,2 @@
+-r vlm.txt
+peft>=0.12
