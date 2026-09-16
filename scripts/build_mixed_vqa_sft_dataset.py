@@ -18,8 +18,16 @@ from medreason_agent.evaluation.answer_metrics import normalize_answer
 from medreason_agent.paths import project_root, resolve_project_path
 
 QUESTION_KEYS = ("question", "Question", "q", "query")
-ANSWER_KEYS = ("answer", "Answer", "answers", "label", "gt_answer")
-IMAGE_KEYS = ("image_path", "image", "img_path", "image_name", "img_name", "file_name")
+ANSWER_KEYS = ("answer", "Answer", "answers", "response", "label", "gt_answer")
+IMAGE_KEYS = (
+    "image_path",
+    "image",
+    "images",
+    "img_path",
+    "image_name",
+    "img_name",
+    "file_name",
+)
 ID_KEYS = ("sample_id", "qid", "id", "question_id")
 
 
@@ -93,6 +101,26 @@ def _as_answer(value: Any) -> str:
     return str(value or "").strip()
 
 
+def _as_image_path(value: Any) -> str:
+    """把图片字段压成单个路径字符串。"""
+    if isinstance(value, list):
+        if not value:
+            return ""
+        return str(value[0] or "").strip()
+    if isinstance(value, dict):
+        value = _pick(value, IMAGE_KEYS) or _pick(value, ("path", "value"))
+    return str(value or "").strip()
+
+
+def _clean_question(question: str) -> str:
+    """去掉 PathVQA 这类指令式问题前缀，只保留真实问题。"""
+    cleaned = question.replace("<image>", "").strip()
+    prefix = "Given this image, please answer the question:"
+    if cleaned.startswith(prefix):
+        cleaned = cleaned[len(prefix) :].strip()
+    return cleaned
+
+
 def _infer_answer_type(answer: str, record: dict[str, Any]) -> str:
     """优先使用原字段，否则根据 yes/no 推断 CLOSED/OPEN。"""
     raw = record.get("answer_type") or record.get("answer_type_name")
@@ -128,10 +156,27 @@ def _infer_question_type(question: str, record: dict[str, Any]) -> str:
 def _normalize_image_path(raw_path: str, image_root: Path | None) -> str:
     """把图片路径规范化为项目相对路径或绝对路径。"""
     image_path = Path(raw_path)
-    if image_root is not None and not image_path.is_absolute():
-        image_path = image_root / image_path
-    if not image_path.is_absolute():
-        image_path = resolve_project_path(image_path)
+    candidates = []
+    if image_root is not None:
+        # PathVQA 的原始路径常见格式是 /path_vqa/image_train/000000.jpg。
+        # 这不是机器上的真实绝对路径，而是数据集内部路径；优先映射到 image_root 下。
+        candidates.extend(
+            [
+                image_root / image_path.name,
+                image_root / image_path.parent.name / image_path.name,
+                image_root / Path(str(raw_path).lstrip("/")),
+            ]
+        )
+        if not image_path.is_absolute():
+            candidates.insert(0, image_root / image_path)
+    candidates.append(image_path if image_path.is_absolute() else resolve_project_path(image_path))
+
+    for candidate in candidates:
+        if candidate.exists():
+            image_path = candidate
+            break
+    else:
+        image_path = candidates[0]
 
     try:
         return str(image_path.resolve().relative_to(project_root().resolve())).replace("\\", "/")
@@ -163,9 +208,9 @@ def _standardize_records(
     samples: list[dict[str, Any]] = []
 
     for index, record in enumerate(records):
-        question = str(_pick(record, QUESTION_KEYS) or "").strip()
+        question = _clean_question(str(_pick(record, QUESTION_KEYS) or "").strip())
         answer = _as_answer(_pick(record, ANSWER_KEYS))
-        raw_image = str(_pick(record, IMAGE_KEYS) or "").strip()
+        raw_image = _as_image_path(_pick(record, IMAGE_KEYS))
         if not question or not answer or not raw_image:
             counters["missing_required_field"] += 1
             continue

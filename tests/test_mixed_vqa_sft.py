@@ -79,6 +79,42 @@ def test_standardize_records_filters_non_english_and_long_answers(tmp_path) -> N
     assert counters["long_answer"] == 1
 
 
+def test_standardize_records_supports_pathvqa_response_and_images(tmp_path) -> None:
+    source = tmp_path / "pathvqa.jsonl"
+    image_root = tmp_path / "images"
+    image_dir = image_root / "image_train"
+    image_dir.mkdir(parents=True)
+    (image_dir / "000000.jpg").write_bytes(b"fake")
+    _write_jsonl(
+        source,
+        [
+            {
+                "question": (
+                    "<image>Given this image, please answer the question: "
+                    "where are cells located?"
+                ),
+                "response": "in the canals of hering",
+                "images": ["/path_vqa/image_train/000000.jpg"],
+            }
+        ],
+    )
+
+    records, counters = _standardize_records(
+        dataset_name="PathVQA",
+        source_path=source,
+        image_root=image_root,
+        split="train",
+        max_samples=None,
+        max_answer_tokens=5,
+        require_images=True,
+    )
+
+    assert counters["kept"] == 1
+    assert records[0]["question"] == "where are cells located?"
+    assert records[0]["answer"] == "in canals of hering"
+    assert records[0]["image_path"].endswith("images/image_train/000000.jpg")
+
+
 def test_lora_dataset_can_use_standardized_jsonl(tmp_path) -> None:
     path = tmp_path / "train.jsonl"
     image_path = tmp_path / "1.jpg"
