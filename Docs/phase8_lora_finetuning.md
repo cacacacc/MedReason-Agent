@@ -184,3 +184,72 @@ TypeError: TrainingArguments.__init__() got an unexpected keyword argument 'warm
 ```
 
 拉取最新代码后重新运行训练命令即可。
+
+## LoRA Structured CoT 与 Phase6 v7
+
+当前 LoRA full 结果：
+
+```text
+LoRA Direct full: 59.87%
+LoRA Phase6 v6 full: 58.76%
+Oracle upper bound: 68.51%
+```
+
+这说明 LoRA Direct 已经强于当前 v6 routing。v6 的主要问题是 CoT 使用偏多：
+
+```text
+selected structured_cot: 113
+structured_cot -> oracle direct: 73
+```
+
+因此新增两组配置：
+
+```text
+LoRA Structured CoT:
+configs/experiments/exp08_lora_structured_cot_qwen_7b_4090d_100.yaml
+configs/experiments/exp08_lora_structured_cot_qwen_7b_4090d_full.yaml
+
+LoRA Phase6 v7:
+configs/experiments/exp08_lora_phase6_v7_qwen_7b_4090d_pmc10k_100.yaml
+configs/experiments/exp08_lora_phase6_v7_qwen_7b_4090d_pmc10k_full.yaml
+```
+
+v7 策略：
+
+```text
+Direct dominant.
+只把明确的 SIZE、ATTRIB closed、侧别、比较、密度、钙化、测量类问题送入 Structured CoT。
+诊断、病因、疾病类 marker 不再自动升级到 CoT。
+Full Multi-Agent 暂时不启用。
+```
+
+推荐运行顺序：
+
+```bash
+python scripts/run_cot.py \
+  --config configs/experiments/exp08_lora_structured_cot_qwen_7b_4090d_100.yaml
+
+python scripts/run_phase6_adaptive_routing.py \
+  --config configs/experiments/exp08_lora_phase6_v7_qwen_7b_4090d_pmc10k_100.yaml
+```
+
+如果 100 条结果不低于 LoRA Direct 100，再跑 full：
+
+```bash
+python scripts/run_cot.py \
+  --config configs/experiments/exp08_lora_structured_cot_qwen_7b_4090d_full.yaml
+
+python scripts/run_phase6_adaptive_routing.py \
+  --config configs/experiments/exp08_lora_phase6_v7_qwen_7b_4090d_pmc10k_full.yaml
+```
+
+用 LoRA Direct、LoRA Structured CoT 和 v7 重新做 oracle：
+
+```bash
+python scripts/analyze_oracle_routing.py \
+  --direct Results/exp08_lora_direct_vlm_qwen_7b_4090d_full/predictions.jsonl \
+  --cot Results/exp08_lora_structured_cot_qwen_7b_4090d_full/predictions.jsonl \
+  --full-agent Results/exp04_supervisor_multi_agent_heuristic_routing_qwen_7b_4090d_pmc10k_full/predictions.jsonl \
+  --routing Results/exp08_lora_phase6_v7_qwen_7b_4090d_pmc10k_full/predictions.jsonl \
+  --output Results/oracle_routing_analysis_exp08_lora_phase6_v7_full
+```

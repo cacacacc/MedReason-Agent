@@ -56,6 +56,8 @@ def decide_rule_based_route(
         return decide_rule_based_route_v5(sample)
     if policy == "rule_based_v6":
         return decide_rule_based_route_v6(sample)
+    if policy == "rule_based_v7":
+        return decide_rule_based_route_v7(sample)
     if policy != "rule_based_v1":
         raise ValueError(f"Unsupported Phase 6 routing policy: {policy}")
 
@@ -562,6 +564,72 @@ def decide_rule_based_route_v6(sample: VQARADSample) -> RoutingDecision:
     )
 
 
+def decide_rule_based_route_v7(sample: VQARADSample) -> RoutingDecision:
+    """Phase6 v7 路由规则。
+
+    v7 专门适配 LoRA 后的 backbone。LoRA Direct full 已经强于 v6 routing，
+    且 oracle 分析显示 v6 最大问题是把过多 oracle-direct 样本送入 Structured CoT。
+    因此 v7 更保守：只让明确的视觉精确判断进入 CoT，诊断/病因类 marker 不再自动升级。
+    """
+    question_types = _question_type_set(sample)
+    answer_type = sample.answer_type.upper()
+    question = sample.question.lower()
+    markers = _matched_markers(question)
+    strong_markers = _matched_strong_medical_markers(question)
+    v4_cot_markers = _matched_v4_cot_markers(question)
+    v7_cot_markers = _matched_v7_lora_cot_markers(question)
+    weak_visual_markers = _matched_visual_description_markers(question)
+
+    if _should_route_v7_to_cot(
+        question_types=question_types,
+        answer_type=answer_type,
+        v4_cot_markers=v4_cot_markers,
+        v7_cot_markers=v7_cot_markers,
+    ):
+        return _decision(
+            route=MEDIUM_ROUTE,
+            complexity="MEDIUM",
+            confidence_signal="MEDIUM",
+            uncertainty_signal="MEDIUM",
+            evidence_support_signal="OPTIONAL",
+            reason="v7 LoRA narrow visual precision trigger",
+            sample=sample,
+            matched_markers=markers,
+            strong_markers=strong_markers,
+            weak_visual_markers=weak_visual_markers,
+        )
+
+    if _is_low_complexity(sample) or _is_direct_short_answer_question(
+        answer_type=answer_type,
+        question_types=question_types,
+    ):
+        return _decision(
+            route=LOW_ROUTE,
+            complexity="LOW",
+            confidence_signal="HIGH",
+            uncertainty_signal="LOW",
+            evidence_support_signal="NOT_REQUIRED",
+            reason="v7 LoRA direct-dominant short-answer visual question",
+            sample=sample,
+            matched_markers=markers,
+            strong_markers=strong_markers,
+            weak_visual_markers=weak_visual_markers,
+        )
+
+    return _decision(
+        route=LOW_ROUTE,
+        complexity="LOW",
+        confidence_signal="MEDIUM",
+        uncertainty_signal="LOW",
+        evidence_support_signal="NOT_REQUIRED",
+        reason="v7 default direct route because LoRA direct is strong",
+        sample=sample,
+        matched_markers=markers,
+        strong_markers=strong_markers,
+        weak_visual_markers=weak_visual_markers,
+    )
+
+
 def fallback_route(route: str) -> str | None:
     """返回当前 route 的下一层 fallback，最多升一级。"""
     if route == LOW_ROUTE:
@@ -747,6 +815,60 @@ def _matched_v6_precision_cot_markers(question: str) -> list[str]:
         "hypointense",
     )
     return [marker for marker in markers if marker in question]
+
+
+def _matched_v7_lora_cot_markers(question: str) -> list[str]:
+    """匹配 LoRA backbone 下仍值得进入 Structured CoT 的窄范围视觉精确题。"""
+    markers = (
+        "which is larger",
+        "which is smaller",
+        "larger than",
+        "smaller than",
+        "greater than",
+        "less than",
+        "more than",
+        "which is more",
+        "more prominent",
+        "less prominent",
+        "left or right",
+        "right or left",
+        "which side",
+        "on which side",
+        "how many",
+        "how large",
+        "measure",
+        "measurement",
+        "calcification",
+        "calcified",
+        "hypodense",
+        "hyperdense",
+        "hyperintense",
+        "hypointense",
+        ">12 ribs",
+        "more radioopaque",
+        "sequence of this mri",
+    )
+    return [marker for marker in markers if marker in question]
+
+
+def _should_route_v7_to_cot(
+    question_types: set[str],
+    answer_type: str,
+    v4_cot_markers: list[str],
+    v7_cot_markers: list[str],
+) -> bool:
+    """判断 v7 是否应调用 Structured CoT。
+
+    规则刻意偏窄，目的是减少 LoRA v6 中 structured_cot->oracle direct 的
+    over-reasoning；不使用答案或模型输出，避免 oracle 泄漏。
+    """
+    if v7_cot_markers:
+        return True
+    if "SIZE" in question_types:
+        return True
+    if "ATTRIB" in question_types and answer_type == "CLOSED":
+        return True
+    return bool(v4_cot_markers and question_types & {"SIZE", "ATTRIB"})
 
 
 def _matched_visual_description_markers(question: str) -> list[str]:

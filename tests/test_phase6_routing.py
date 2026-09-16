@@ -310,3 +310,46 @@ def test_rule_based_v6_routes_precision_visual_question_to_cot() -> None:
     )
 
     assert decision.route == MEDIUM_ROUTE
+
+
+def test_rule_based_v7_keeps_diagnostic_marker_direct_for_lora() -> None:
+    decision = decide_rule_based_route(
+        _sample(
+            question="What diagnosis is most consistent with this finding?",
+            answer_type="OPEN",
+            question_type="OTHER",
+        ),
+        policy="rule_based_v7",
+    )
+
+    assert decision.route == LOW_ROUTE
+    assert decision.complexity == "LOW"
+    assert "direct" in decision.reason
+
+
+def test_rule_based_v7_routes_size_question_to_cot() -> None:
+    decision = decide_rule_based_route(
+        _sample(
+            question="Is the mass larger than 3 cm?",
+            answer_type="CLOSED",
+            question_type="SIZE",
+        ),
+        policy="rule_based_v7",
+    )
+
+    assert decision.route == MEDIUM_ROUTE
+    assert decision.complexity == "MEDIUM"
+
+
+def test_rule_based_v7_routes_precision_visual_marker_to_cot() -> None:
+    decision = decide_rule_based_route(
+        _sample(
+            question="Which side has more prominent calcification?",
+            answer_type="OPEN",
+            question_type="ATTRIB",
+        ),
+        policy="rule_based_v7",
+    )
+
+    assert decision.route == MEDIUM_ROUTE
+    assert decision.reason == "v7 LoRA narrow visual precision trigger"
