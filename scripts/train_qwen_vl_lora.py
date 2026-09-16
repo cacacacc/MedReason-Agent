@@ -20,6 +20,7 @@ from typing import Any
 
 import yaml
 
+from medreason_agent.data.mixed_vqa import MixedVQASample, load_mixed_vqa_jsonl
 from medreason_agent.data.vqa_rad import VQARADSample, load_vqa_rad_split
 from medreason_agent.evaluation.answer_metrics import normalize_answer
 from medreason_agent.paths import resolve_project_path
@@ -47,8 +48,11 @@ Output rules:
 - If the question asks side or position, output the shortest location phrase."""
 
 
-def build_training_prompt(sample: VQARADSample, prompt_template: str = "short_answer_v1") -> str:
-    """Build the supervised fine-tuning user prompt."""
+def build_training_prompt(
+    sample: VQARADSample | MixedVQASample,
+    prompt_template: str = "short_answer_v1",
+) -> str:
+    """构建监督微调的 user prompt。"""
     if prompt_template == "question_type_aware_short_v2":
         return QUESTION_TYPE_AWARE_PROMPT.format(
             question=sample.question,
@@ -58,8 +62,8 @@ def build_training_prompt(sample: VQARADSample, prompt_template: str = "short_an
     return USER_PROMPT.format(question=sample.question)
 
 
-def canonical_training_answer(sample: VQARADSample) -> str:
-    """Normalize the supervised target into the short-answer format we evaluate."""
+def canonical_training_answer(sample: VQARADSample | MixedVQASample) -> str:
+    """把训练目标统一成评测使用的短答案格式。"""
     normalized = normalize_answer(sample.answer)
     if sample.answer_type.upper() == "CLOSED" and normalized in {"yes", "no"}:
         return normalized
@@ -70,7 +74,7 @@ def canonical_training_answer(sample: VQARADSample) -> str:
 class TrainingExample:
     """LoRA 训练用的单条样本。"""
 
-    sample: VQARADSample
+    sample: VQARADSample | MixedVQASample
     prompt_template: str = "short_answer_v1"
     image_min_pixels: int | None = None
     image_max_pixels: int | None = None
@@ -143,6 +147,68 @@ class VQARADLoRADataset:
 
     def __getitem__(self, index: int) -> TrainingExample:
         return self.examples[index]
+
+
+class JSONLLoRADataset:
+    """读取标准化 JSONL 的 LoRA Dataset。
+
+    这个类主要用于混合数据 SFT。JSONL 可以由
+    `scripts/build_mixed_vqa_sft_dataset.py` 生成，也可以由后续数据清洗脚本生成。
+    """
+
+    def __init__(
+        self,
+        path: str | Path,
+        max_samples: int | None = None,
+        prompt_template: str = "short_answer_v1",
+        image_min_pixels: int | None = None,
+        image_max_pixels: int | None = None,
+    ) -> None:
+        self.examples = [
+            TrainingExample(
+                sample=sample,
+                prompt_template=prompt_template,
+                image_min_pixels=image_min_pixels,
+                image_max_pixels=image_max_pixels,
+            )
+            for sample in load_mixed_vqa_jsonl(path, max_samples=max_samples)
+        ]
+
+    def __len__(self) -> int:
+        return len(self.examples)
+
+    def __getitem__(self, index: int) -> TrainingExample:
+        return self.examples[index]
+
+
+def build_lora_dataset(
+    dataset_config: dict[str, Any],
+    *,
+    split_key: str,
+    file_key: str,
+    max_samples_key: str,
+    prompt_template: str,
+    image_min_pixels: int | None,
+    image_max_pixels: int | None,
+) -> VQARADLoRADataset | JSONLLoRADataset:
+    """根据配置选择旧版 VQA-RAD split 或新版标准化 JSONL。"""
+    max_samples = dataset_config.get(max_samples_key)
+    if dataset_config.get(file_key):
+        return JSONLLoRADataset(
+            path=dataset_config[file_key],
+            max_samples=max_samples,
+            prompt_template=prompt_template,
+            image_min_pixels=image_min_pixels,
+            image_max_pixels=image_max_pixels,
+        )
+    default_split = "train" if "train" in split_key else "validation"
+    return VQARADLoRADataset(
+        split=str(dataset_config.get(split_key, default_split)),
+        max_samples=max_samples,
+        prompt_template=prompt_template,
+        image_min_pixels=image_min_pixels,
+        image_max_pixels=image_max_pixels,
+    )
 
 
 class QwenVLDataCollator:
@@ -359,16 +425,20 @@ def run(config_path: Path) -> dict[str, Any]:
     model = get_peft_model(model, build_lora_config(config))
     model.print_trainable_parameters()
 
-    train_dataset = VQARADLoRADataset(
-        split=str(dataset_config.get("train_split", "train")),
-        max_samples=dataset_config.get("max_train_samples"),
+    train_dataset = build_lora_dataset(
+        dataset_config,
+        split_key="train_split",
+        file_key="train_file",
+        max_samples_key="max_train_samples",
         prompt_template=prompt_template,
         image_min_pixels=vision_config.get("min_pixels"),
         image_max_pixels=vision_config.get("max_pixels"),
     )
-    eval_dataset = VQARADLoRADataset(
-        split=str(dataset_config.get("validation_split", "validation")),
-        max_samples=dataset_config.get("max_validation_samples"),
+    eval_dataset = build_lora_dataset(
+        dataset_config,
+        split_key="validation_split",
+        file_key="validation_file",
+        max_samples_key="max_validation_samples",
         prompt_template=prompt_template,
         image_min_pixels=vision_config.get("min_pixels"),
         image_max_pixels=vision_config.get("max_pixels"),
