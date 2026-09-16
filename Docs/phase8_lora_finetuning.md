@@ -372,6 +372,54 @@ python scripts/run_phase6_adaptive_routing.py \
   --config configs/experiments/exp08_lora_v2_phase6_v8_qwen_7b_48gb_pmc10k_full.yaml
 ```
 
+## LoRA v2b: 低过拟合版本
+
+v2 的 5 epoch 训练在 validation loss 上明显过拟合，100 条 accuracy 从 v1 的 58%
+降到 55%。v2b 保留题型感知输出格式，但降低训练强度：
+
+```text
+num_train_epochs: 2
+learning_rate: 5e-5
+LoRA rank: 8
+target_modules: q_proj, v_proj
+load_best_model_at_end: true
+metric_for_best_model: eval_loss
+greater_is_better: false
+```
+
+训练：
+
+```bash
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+
+python scripts/train_qwen_vl_lora.py \
+  --config configs/training/phase8_qwen_vl_lora_v2b_format_48gb.yaml
+```
+
+训练完先跑 100 条：
+
+```bash
+python scripts/run_direct_vlm.py \
+  --config configs/experiments/exp08_lora_v2b_direct_vlm_qwen_7b_48gb_100.yaml
+```
+
+如果 v2b Direct 100 高于 58%，再跑 full：
+
+```bash
+python scripts/run_direct_vlm.py \
+  --config configs/experiments/exp08_lora_v2b_direct_vlm_qwen_7b_48gb_full.yaml
+```
+
+如果 Direct full 明显提升，再跑 Phase6 v8：
+
+```bash
+python scripts/run_phase6_adaptive_routing.py \
+  --config configs/experiments/exp08_lora_v2b_phase6_v8_qwen_7b_48gb_pmc10k_100.yaml
+
+python scripts/run_phase6_adaptive_routing.py \
+  --config configs/experiments/exp08_lora_v2b_phase6_v8_qwen_7b_48gb_pmc10k_full.yaml
+```
+
 ## Phase6 v9: Oracle-Distilled Learned Router
 
 Oracle routing 的 68.51% 是事后上限，不能直接部署。v9 的目标是把 oracle label

@@ -101,6 +101,22 @@ def test_phase8_lora_v2_training_config_parses() -> None:
     assert config["outputs"]["merged_model_dir"].endswith("qwen_vl_lora_v2_format_48gb/merged")
 
 
+def test_phase8_lora_v2b_training_config_uses_best_checkpoint() -> None:
+    with open(
+        "configs/training/phase8_qwen_vl_lora_v2b_format_48gb.yaml",
+        encoding="utf-8",
+    ) as file:
+        config = yaml.safe_load(file)
+
+    assert config["phase"] == 8
+    assert config["lora"]["r"] == 8
+    assert config["lora"]["target_modules"] == ["q_proj", "v_proj"]
+    assert config["training"]["num_train_epochs"] == 2
+    assert config["training"]["load_best_model_at_end"] is True
+    assert config["training"]["metric_for_best_model"] == "eval_loss"
+    assert config["training"]["greater_is_better"] is False
+
+
 def test_build_training_arguments_handles_old_transformers_signature(tmp_path) -> None:
     class OldTrainingArguments:
         def __init__(
@@ -135,3 +151,36 @@ def test_build_training_arguments_handles_old_transformers_signature(tmp_path) -
     assert args.kwargs["warmup_steps"] == 0
     assert args.kwargs["evaluation_strategy"] == "steps"
     assert args.kwargs["save_strategy"] == "steps"
+
+
+def test_build_training_arguments_passes_best_checkpoint_fields(tmp_path) -> None:
+    class NewTrainingArguments:
+        def __init__(
+            self,
+            output_dir,
+            load_best_model_at_end,
+            metric_for_best_model,
+            greater_is_better,
+        ) -> None:
+            self.kwargs = {
+                "output_dir": output_dir,
+                "load_best_model_at_end": load_best_model_at_end,
+                "metric_for_best_model": metric_for_best_model,
+                "greater_is_better": greater_is_better,
+            }
+
+    args = build_training_arguments(
+        NewTrainingArguments,
+        tmp_path,
+        {
+            "training": {
+                "load_best_model_at_end": True,
+                "metric_for_best_model": "eval_loss",
+                "greater_is_better": False,
+            }
+        },
+    )
+
+    assert args.kwargs["load_best_model_at_end"] is True
+    assert args.kwargs["metric_for_best_model"] == "eval_loss"
+    assert args.kwargs["greater_is_better"] is False

@@ -286,6 +286,14 @@ def build_training_arguments(training_arguments_cls, output_dir: Path, config: d
         "report_to": list(training_config.get("report_to", [])),
         "dataloader_num_workers": int(training_config.get("dataloader_num_workers", 0)),
     }
+    for field in (
+        "load_best_model_at_end",
+        "metric_for_best_model",
+        "greater_is_better",
+    ):
+        if field in supported and field in training_config:
+            kwargs[field] = training_config[field]
+
     if "optim" in supported and training_config.get("optim"):
         kwargs["optim"] = str(training_config["optim"])
     if "warmup_ratio" in supported:
