@@ -29,15 +29,40 @@ def _read_records(path: Path) -> list[dict[str, Any]]:
     if not text:
         return []
     if text.startswith("["):
-        records = json.loads(text)
-        if not isinstance(records, list):
-            raise ValueError(f"JSON file must contain a list: {path}")
-        return [record for record in records if isinstance(record, dict)]
+        try:
+            records = json.loads(text)
+        except json.JSONDecodeError:
+            # 有些公开数据虽然扩展名叫 jsonl，但下载/转换后可能不是合法 JSON list。
+            # 这里先回退到逐行解析；如果仍失败，再抛出带文件名的诊断信息。
+            return _read_jsonl_records(path, text)
+        if isinstance(records, list):
+            return [record for record in records if isinstance(record, dict)]
+        if isinstance(records, dict):
+            for key in ("data", "annotations", "questions", "records"):
+                value = records.get(key)
+                if isinstance(value, list):
+                    return [record for record in value if isinstance(record, dict)]
+        raise ValueError(f"JSON file must contain a list or data-like list field: {path}")
 
+    return _read_jsonl_records(path, text)
+
+
+def _read_jsonl_records(path: Path, text: str) -> list[dict[str, Any]]:
+    """逐行读取 JSONL，并在坏文件时给出可定位的错误信息。"""
     records = []
-    for line in text.splitlines():
+    for line_number, line in enumerate(text.splitlines(), start=1):
         if line.strip():
-            record = json.loads(line)
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError as error:
+                prefix = text[:200].replace("\n", "\\n")
+                raise ValueError(
+                    "Failed to parse raw VQA file. "
+                    f"path={path}, line={line_number}, size={path.stat().st_size} bytes, "
+                    f"first_200_chars={prefix!r}. "
+                    "This usually means the download is incomplete/corrupted "
+                    "or the URL saved an error page."
+                ) from error
             if isinstance(record, dict):
                 records.append(record)
     return records
