@@ -1,8 +1,4 @@
-"""Medical VQA 的答案归一化和基础指标。
-
-Phase 1 和 Phase 2 都会用这里的函数评估最终答案。Direct baseline 直接评估
-模型输出；CoT baseline 会先抽取 `Final Answer`，再交给这些指标函数。
-"""
+"""Medical VQA answer normalization and basic metrics."""
 
 from __future__ import annotations
 
@@ -16,11 +12,7 @@ _ARTICLES = {"a", "an", "the"}
 
 
 def normalize_answer(answer: str) -> str:
-    """把答案文本归一化，方便做 exact match 风格评估。
-
-    归一化会统一大小写、去掉标点、移除英文冠词。这样 `The lung.` 和 `lung`
-    会被视为同一个答案，避免因为表面格式差异误判。
-    """
+    """Normalize answer text for exact-match style Medical VQA evaluation."""
     text = _normalize_synonyms(canonical_short_answer(answer).lower().strip())
     text = re.sub(r"[^a-z0-9\s]", " ", text)
     tokens = [token for token in text.split() if token not in _ARTICLES]
@@ -28,10 +20,7 @@ def normalize_answer(answer: str) -> str:
 
 
 def exact_match(prediction: str, ground_truth: str, question: str = "") -> bool:
-    """判断预测答案和标准答案在归一化后是否完全一致。
-
-    Exact match 是最严格的主指标之一，特别适合 yes/no 这类 closed questions。
-    """
+    """Return whether prediction and ground truth match after answer normalization."""
     normalized_prediction = normalize_answer(
         canonical_short_answer(prediction, question=question),
     )
@@ -39,11 +28,7 @@ def exact_match(prediction: str, ground_truth: str, question: str = "") -> bool:
 
 
 def token_f1(prediction: str, ground_truth: str) -> float:
-    """计算归一化后的 token-level F1。
-
-    Token F1 比 exact match 更宽松：如果开放式答案只答对了一部分关键词，
-    它能给出部分分数。
-    """
+    """Compute token-level F1 after answer normalization."""
     prediction_tokens = normalize_answer(prediction).split()
     ground_truth_tokens = normalize_answer(ground_truth).split()
 
@@ -57,19 +42,13 @@ def token_f1(prediction: str, ground_truth: str) -> float:
     if overlap == 0:
         return 0.0
 
-    # Precision 表示预测 token 中有多少是正确的；recall 表示标准答案 token
-    # 中有多少被预测覆盖。F1 是二者的调和平均。
     precision = overlap / len(prediction_tokens)
     recall = overlap / len(ground_truth_tokens)
     return 2 * precision * recall / (precision + recall)
 
 
 def bleu_1(prediction: str, ground_truth: str) -> float:
-    """计算简化版 BLEU-1，并加入 brevity penalty。
-
-    BLEU-1 只看 unigram 重叠，适合作为开放式短答案的辅助指标。
-    它不是医学正确性的最终判断，只帮助观察词面相似度。
-    """
+    """Compute a simplified BLEU-1 score with brevity penalty."""
     prediction_tokens = normalize_answer(prediction).split()
     ground_truth_tokens = normalize_answer(ground_truth).split()
 
@@ -82,17 +61,12 @@ def bleu_1(prediction: str, ground_truth: str) -> float:
     precision = overlap / len(prediction_tokens)
     brevity_penalty = 1.0
     if len(prediction_tokens) < len(ground_truth_tokens):
-        # 如果预测答案明显短于标准答案，BLEU 会用 brevity penalty 轻微惩罚。
         brevity_penalty = math.exp(1 - len(ground_truth_tokens) / len(prediction_tokens))
     return brevity_penalty * precision
 
 
 def summarize_answer_metrics(records: list[dict]) -> dict[str, float | int]:
-    """汇总一组 prediction records 的答案指标。
-
-    输入 records 必须包含 `prediction` 和 `ground_truth` 字段。这个函数只关心
-    最终答案，不评价 reasoning 是否正确。
-    """
+    """Summarize final-answer metrics for prediction records."""
     total = len(records)
     if total == 0:
         return {
@@ -109,6 +83,7 @@ def summarize_answer_metrics(records: list[dict]) -> dict[str, float | int]:
                 question=str(record.get("question", "")),
             ),
             str(record["ground_truth"]),
+            question=str(record.get("question", "")),
         )
         for record in records
     ]
@@ -142,16 +117,59 @@ def summarize_answer_metrics(records: list[dict]) -> dict[str, float | int]:
 
 
 def _normalize_synonyms(text: str) -> str:
-    """归一化常见医学短答案同义写法。"""
+    """Normalize common Medical VQA short-answer synonyms."""
+    text = _normalize_laterality(text)
     replacements = {
+        "anteroposterior": "ap",
+        "air space": "airspace",
+        "bilateral": "both",
         "cerebrospinal fluid": "csf",
-        "computed tomography": "ct",
-        "magnetic resonance imaging": "mri",
-        "x ray": "xray",
-        "x-ray": "xray",
-        "chest xray": "cxr",
+        "chest radiograph": "cxr",
         "chest x ray": "cxr",
+        "chest xray": "cxr",
+        "computed tomography": "ct",
+        "computed tomographic": "ct",
+        "computerized tomography": "ct",
+        "computerized tomographic": "ct",
+        "coronal plane": "coronal",
+        "frontal chest radiograph": "cxr",
+        "frontal radiograph": "xray",
+        "gall stones": "gallstones",
+        "hepatic": "liver",
+        "large intestine": "colon",
+        "magnetic resonance": "mri",
+        "magnetic resonance image": "mri",
+        "magnetic resonance imaging": "mri",
+        "no abnormalities": "normal",
+        "no abnormality": "normal",
+        "no acute abnormality": "normal",
+        "not abnormal": "normal",
+        "not enlarged": "normal",
+        "normal size": "normal",
+        "posterior anterior": "pa",
+        "posteroanterior": "pa",
+        "radiograph": "xray",
+        "radiography": "xray",
+        "renal": "kidney",
+        "sagittal plane": "sagittal",
+        "small intestine": "small bowel",
+        "sonogram": "ultrasound",
+        "sonography": "ultrasound",
+        "ultrasonography": "ultrasound",
+        "us": "ultrasound",
+        "within normal limits": "normal",
+        "x-ray": "xray",
+        "x ray": "xray",
     }
-    for source, target in replacements.items():
-        text = text.replace(source, target)
+    for source, target in sorted(replacements.items(), key=lambda item: len(item[0]), reverse=True):
+        text = re.sub(rf"\b{re.escape(source)}\b", target, text)
+    return text
+
+
+def _normalize_laterality(text: str) -> str:
+    """Normalize common left/right side variants."""
+    text = re.sub(r"\bleft[-\s]+sided\b", "left", text)
+    text = re.sub(r"\bright[-\s]+sided\b", "right", text)
+    text = re.sub(r"\bleft\s+side\b", "left", text)
+    text = re.sub(r"\bright\s+side\b", "right", text)
     return text

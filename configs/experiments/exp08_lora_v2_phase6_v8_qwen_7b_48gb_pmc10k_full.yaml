@@ -1,0 +1,48 @@
+experiment_id: exp08_lora_v2_phase6_v8_qwen_7b_48gb_pmc10k_full
+name: Phase 8 LoRA v2 Phase 6 v8 Adaptive Routing - Qwen 2.5 VL 7B 48GB PMC 10k Full Test
+phase: 8
+inherits: configs/base.yaml
+
+method:
+  type: adaptive_routing
+  backend: qwen2_5_vl
+  model_id: Experiments/phase8/qwen_vl_lora_v2_format_48gb/merged
+  torch_dtype: bfloat16
+  device_map: auto
+  prompt_version: phase8_lora_v2_phase6_rule_based_adaptive_routing_v8
+  prompt_contract: lora_v2_direct_dominant_ultra_narrow_cot_no_full_agent_v8
+  routing_policy: rule_based_v8
+  deterministic_answer_gate: false
+  fallback:
+    enabled: true
+  training_epochs: 5
+
+dataset:
+  name: VQA-RAD
+  split: test
+  scale: full
+  max_samples: null
+
+retrieval:
+  enabled: true
+  retriever: faiss
+  embedding_model: /root/autodl-tmp/models/bge-small-en-v1.5
+  index_path: Data/Processed/medical_kb/pmc_10k_bge_small.faiss
+  metadata_path: Data/Processed/medical_kb/pmc_10k_bge_small_metadata.jsonl
+  reranker: keyword_reranker
+  corpus_name: pmc_abstracts_10k
+  corpus_path: Data/Processed/medical_kb/pmc_10k_chunks.jsonl
+  candidate_top_k: 10
+  top_k: 5
+  min_rerank_score: 0.0
+  max_chars_per_evidence: 500
+
+generation:
+  temperature: 0.0
+  top_p: 1.0
+  max_new_tokens: 128
+
+outputs:
+  result_dir: Results/exp08_lora_v2_phase6_v8_qwen_7b_48gb_pmc10k_full
+  prediction_file: predictions.jsonl
+  metrics_file: metrics.json

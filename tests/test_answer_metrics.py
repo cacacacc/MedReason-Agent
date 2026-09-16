@@ -43,6 +43,28 @@ def test_exact_match_uses_normalized_text() -> None:
     assert exact_match("A lung", "lung")
 
 
+def test_exact_match_normalizes_medical_modality_synonyms() -> None:
+    assert exact_match("computed tomography", "CT")
+    assert exact_match("chest radiograph", "cxr")
+    assert exact_match("x-ray", "xray")
+    assert exact_match("ultrasonography", "ultrasound")
+
+
+def test_exact_match_normalizes_laterality_variants() -> None:
+    assert exact_match("left-sided", "left")
+    assert exact_match("right side", "right")
+
+
+def test_normalize_answer_does_not_replace_us_inside_words() -> None:
+    assert normalize_answer("sinus") == "sinus"
+
+
+def test_exact_match_normalizes_common_medical_phrases() -> None:
+    assert exact_match("within normal limits", "normal")
+    assert exact_match("gall stones", "gallstones")
+    assert exact_match("renal", "kidney")
+
+
 def test_token_f1_handles_partial_overlap() -> None:
     assert token_f1("right lung", "left lung") == 0.5
 

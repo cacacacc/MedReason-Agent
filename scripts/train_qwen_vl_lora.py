@@ -21,6 +21,7 @@ from typing import Any
 import yaml
 
 from medreason_agent.data.vqa_rad import VQARADSample, load_vqa_rad_split
+from medreason_agent.evaluation.answer_metrics import normalize_answer
 from medreason_agent.paths import resolve_project_path
 
 USER_PROMPT = """Answer the medical question based on the image.
@@ -31,26 +32,76 @@ Return only the short final answer.
 For yes/no questions, answer exactly yes or no.
 For open questions, answer with one short phrase, not a sentence."""
 
+QUESTION_TYPE_AWARE_PROMPT = """Answer the medical question based on the image.
+
+Question: {question}
+Answer type: {answer_type}
+Question type: {question_type}
+
+Output rules:
+- Return only the final answer.
+- Do not explain.
+- If Answer type is CLOSED, output exactly yes or no.
+- If Question type is MODALITY, output one of: xray, ct, mri, ultrasound.
+- If Question type is PLANE, output one of: axial, coronal, sagittal, frontal, lateral.
+- If the question asks side or position, output the shortest location phrase."""
+
+
+def build_training_prompt(sample: VQARADSample, prompt_template: str = "short_answer_v1") -> str:
+    """Build the supervised fine-tuning user prompt."""
+    if prompt_template == "question_type_aware_short_v2":
+        return QUESTION_TYPE_AWARE_PROMPT.format(
+            question=sample.question,
+            answer_type=sample.answer_type,
+            question_type=sample.question_type,
+        )
+    return USER_PROMPT.format(question=sample.question)
+
+
+def canonical_training_answer(sample: VQARADSample) -> str:
+    """Normalize the supervised target into the short-answer format we evaluate."""
+    normalized = normalize_answer(sample.answer)
+    if sample.answer_type.upper() == "CLOSED" and normalized in {"yes", "no"}:
+        return normalized
+    return normalized or sample.answer.strip()
+
 
 @dataclass(frozen=True)
 class TrainingExample:
     """LoRA 训练用的单条样本。"""
 
     sample: VQARADSample
+    prompt_template: str = "short_answer_v1"
+    image_min_pixels: int | None = None
+    image_max_pixels: int | None = None
 
     @property
     def answer(self) -> str:
         """返回 benchmark-style 短答案。"""
+        if self.prompt_template == "question_type_aware_short_v2":
+            return canonical_training_answer(self.sample)
         return self.sample.answer.strip()
 
     def user_messages(self) -> list[dict[str, Any]]:
         """构造只有 user turn 的 Qwen 多模态 chat message。"""
+        image_content: dict[str, Any] = {
+            "type": "image",
+            "image": str(self.sample.absolute_image_path),
+        }
+        if self.image_min_pixels is not None:
+            image_content["min_pixels"] = self.image_min_pixels
+        if self.image_max_pixels is not None:
+            image_content["max_pixels"] = self.image_max_pixels
+
         return [
             {
                 "role": "user",
                 "content": [
-                    {"type": "image", "image": str(self.sample.absolute_image_path)},
-                    {"type": "text", "text": USER_PROMPT.format(question=self.sample.question)},
+                    image_content,
+                    {
+                        "type": "text",
+                        "text": build_training_prompt(self.sample, self.prompt_template),
+                    },
                 ],
             }
         ]
@@ -69,9 +120,22 @@ class TrainingExample:
 class VQARADLoRADataset:
     """轻量 Dataset，避免强依赖 datasets 包。"""
 
-    def __init__(self, split: str, max_samples: int | None = None) -> None:
+    def __init__(
+        self,
+        split: str,
+        max_samples: int | None = None,
+        prompt_template: str = "short_answer_v1",
+        image_min_pixels: int | None = None,
+        image_max_pixels: int | None = None,
+    ) -> None:
         self.examples = [
-            TrainingExample(sample) for sample in load_vqa_rad_split(split, max_samples=max_samples)
+            TrainingExample(
+                sample=sample,
+                prompt_template=prompt_template,
+                image_min_pixels=image_min_pixels,
+                image_max_pixels=image_max_pixels,
+            )
+            for sample in load_vqa_rad_split(split, max_samples=max_samples)
         ]
 
     def __len__(self) -> int:
@@ -222,6 +286,8 @@ def build_training_arguments(training_arguments_cls, output_dir: Path, config: d
         "report_to": list(training_config.get("report_to", [])),
         "dataloader_num_workers": int(training_config.get("dataloader_num_workers", 0)),
     }
+    if "optim" in supported and training_config.get("optim"):
+        kwargs["optim"] = str(training_config["optim"])
     if "warmup_ratio" in supported:
         kwargs["warmup_ratio"] = warmup_ratio
     elif "warmup_steps" in supported:
@@ -262,6 +328,8 @@ def run(config_path: Path) -> dict[str, Any]:
     dataset_config = config["dataset"]
     training_config = config["training"]
     output_config = config["outputs"]
+    vision_config = config.get("vision", {})
+    prompt_template = str(method.get("prompt_template", "short_answer_v1"))
 
     set_seed(int(training_config.get("seed", 42)))
 
@@ -286,10 +354,16 @@ def run(config_path: Path) -> dict[str, Any]:
     train_dataset = VQARADLoRADataset(
         split=str(dataset_config.get("train_split", "train")),
         max_samples=dataset_config.get("max_train_samples"),
+        prompt_template=prompt_template,
+        image_min_pixels=vision_config.get("min_pixels"),
+        image_max_pixels=vision_config.get("max_pixels"),
     )
     eval_dataset = VQARADLoRADataset(
         split=str(dataset_config.get("validation_split", "validation")),
         max_samples=dataset_config.get("max_validation_samples"),
+        prompt_template=prompt_template,
+        image_min_pixels=vision_config.get("min_pixels"),
+        image_max_pixels=vision_config.get("max_pixels"),
     )
 
     args = build_training_arguments(TrainingArguments, output_dir, config)
@@ -318,6 +392,8 @@ def run(config_path: Path) -> dict[str, Any]:
         "adapter_dir": str(adapter_dir),
         "merged_model_dir": str(merged_model_dir),
         "merge_adapter": bool(output_config.get("merge_adapter", False)),
+        "prompt_template": prompt_template,
+        "vision": vision_config,
         "num_train_samples": len(train_dataset),
         "num_validation_samples": len(eval_dataset),
         "train_metrics": metrics,

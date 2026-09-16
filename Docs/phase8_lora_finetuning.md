@@ -287,3 +287,87 @@ python scripts/run_phase6_adaptive_routing.py \
 python scripts/run_phase6_adaptive_routing.py \
   --config configs/experiments/exp08_lora_phase6_v8_qwen_7b_4090d_pmc10k_full.yaml
 ```
+
+## Step 1: Answer Normalization Re-evaluation
+
+为了减少格式误判，当前评估已经增强了短答案归一化：
+
+```text
+computed tomography -> ct
+magnetic resonance imaging -> mri
+chest radiograph / chest x-ray -> cxr
+ultrasonography / sonography / us -> ultrasound
+left side / left-sided -> left
+right side / right-sided -> right
+within normal limits / no abnormality -> normal
+gall stones -> gallstones
+renal -> kidney
+```
+
+已有实验不需要重跑模型，可以直接重评估：
+
+```bash
+python scripts/reevaluate_predictions.py \
+  --predictions Results/exp08_lora_direct_vlm_qwen_7b_4090d_full/predictions.jsonl \
+  --output-dir Results/exp08_lora_direct_vlm_qwen_7b_4090d_full_renorm
+
+python scripts/reevaluate_predictions.py \
+  --predictions Results/exp08_lora_phase6_v8_qwen_7b_4090d_pmc10k_full/predictions.jsonl \
+  --output-dir Results/exp08_lora_phase6_v8_qwen_7b_4090d_pmc10k_full_renorm
+```
+
+重评估结果只能作为 normalized evaluation；论文表格中要明确标注：
+
+```text
+Accuracy 使用 enhanced answer normalization。
+```
+
+## Step 2: LoRA v2 Question-Type-Aware Training
+
+LoRA v2 不训练 CoT，而是把训练目标改成更严格的题型感知短答案：
+
+```text
+CLOSED -> yes / no
+MODALITY -> xray / ct / mri / ultrasound
+PLANE -> axial / coronal / sagittal / frontal / lateral
+POSITION -> shortest location phrase
+```
+
+训练配置：
+
+```text
+configs/training/phase8_qwen_vl_lora_v2_format_48gb.yaml
+```
+
+48GB 显卡训练：
+
+```bash
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+
+python scripts/train_qwen_vl_lora.py \
+  --config configs/training/phase8_qwen_vl_lora_v2_format_48gb.yaml
+```
+
+训练完成后先跑 100 条 Direct：
+
+```bash
+python scripts/run_direct_vlm.py \
+  --config configs/experiments/exp08_lora_v2_direct_vlm_qwen_7b_48gb_100.yaml
+```
+
+如果 100 条明显高于 LoRA v1 Direct 100 的 58%，再跑 full：
+
+```bash
+python scripts/run_direct_vlm.py \
+  --config configs/experiments/exp08_lora_v2_direct_vlm_qwen_7b_48gb_full.yaml
+```
+
+如果 Direct full 接近或超过 65%，再跑 Phase6 v8：
+
+```bash
+python scripts/run_phase6_adaptive_routing.py \
+  --config configs/experiments/exp08_lora_v2_phase6_v8_qwen_7b_48gb_pmc10k_100.yaml
+
+python scripts/run_phase6_adaptive_routing.py \
+  --config configs/experiments/exp08_lora_v2_phase6_v8_qwen_7b_48gb_pmc10k_full.yaml
+```
