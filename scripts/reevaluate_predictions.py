@@ -1,4 +1,4 @@
-"""Re-evaluate existing prediction JSONL files with current answer normalization.
+"""使用当前 answer normalization 重新评估已有 prediction JSONL。
 
 用途：
 已经跑完的 GPU 实验不需要重跑模型。这个脚本只读取 predictions.jsonl，
@@ -25,7 +25,7 @@ from medreason_agent.paths import resolve_project_path
 
 
 def load_jsonl(path: Path) -> list[dict[str, Any]]:
-    """Read prediction records from JSONL."""
+    """从 JSONL 读取 prediction records。"""
     records: list[dict[str, Any]] = []
     with path.open("r", encoding="utf-8") as file:
         for line_number, line in enumerate(file, start=1):
@@ -40,7 +40,7 @@ def load_jsonl(path: Path) -> list[dict[str, Any]]:
 
 
 def write_jsonl(path: Path, records: list[dict[str, Any]]) -> None:
-    """Write prediction records to JSONL."""
+    """把 prediction records 写入 JSONL。"""
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as file:
         for record in records:
@@ -48,7 +48,7 @@ def write_jsonl(path: Path, records: list[dict[str, Any]]) -> None:
 
 
 def reevaluate_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Recompute correctness and error attribution with current normalization."""
+    """用当前归一化规则重算 correct 和 error attribution。"""
     updated_records: list[dict[str, Any]] = []
     for record in records:
         updated = dict(record)
@@ -65,7 +65,7 @@ def reevaluate_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def summarize_records(records: list[dict[str, Any]], source_predictions: Path) -> dict[str, Any]:
-    """Build metrics summary while preserving common experiment metadata."""
+    """汇总 metrics，并保留常用实验元信息。"""
     metrics: dict[str, Any] = {}
     metrics.update(summarize_answer_metrics(records))
     metrics.update(summarize_evidence_quality(records))
@@ -95,14 +95,14 @@ def summarize_records(records: list[dict[str, Any]], source_predictions: Path) -
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Re-evaluate predictions with current answer normalization.",
+        description="使用当前 answer normalization 重新评估 predictions。",
     )
     parser.add_argument("--predictions", type=Path, required=True)
     parser.add_argument(
         "--output-dir",
         type=Path,
         required=True,
-        help="Directory for re-evaluated predictions.jsonl and metrics.json.",
+        help="重新评估后的 predictions.jsonl 和 metrics.json 输出目录。",
     )
     return parser.parse_args()
 

@@ -1,4 +1,4 @@
-"""Medical VQA answer normalization and basic metrics."""
+"""Medical VQA 答案归一化和基础指标。"""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ _ARTICLES = {"a", "an", "the"}
 
 
 def normalize_answer(answer: str) -> str:
-    """Normalize answer text for exact-match style Medical VQA evaluation."""
+    """把答案文本归一化，用于 exact-match 风格的 Medical VQA 评估。"""
     text = _normalize_synonyms(canonical_short_answer(answer).lower().strip())
     text = re.sub(r"[^a-z0-9\s]", " ", text)
     tokens = [token for token in text.split() if token not in _ARTICLES]
@@ -20,7 +20,7 @@ def normalize_answer(answer: str) -> str:
 
 
 def exact_match(prediction: str, ground_truth: str, question: str = "") -> bool:
-    """Return whether prediction and ground truth match after answer normalization."""
+    """判断预测答案和标准答案在归一化后是否一致。"""
     normalized_prediction = normalize_answer(
         canonical_short_answer(prediction, question=question),
     )
@@ -28,7 +28,7 @@ def exact_match(prediction: str, ground_truth: str, question: str = "") -> bool:
 
 
 def token_f1(prediction: str, ground_truth: str) -> float:
-    """Compute token-level F1 after answer normalization."""
+    """计算归一化后的 token-level F1。"""
     prediction_tokens = normalize_answer(prediction).split()
     ground_truth_tokens = normalize_answer(ground_truth).split()
 
@@ -48,7 +48,7 @@ def token_f1(prediction: str, ground_truth: str) -> float:
 
 
 def bleu_1(prediction: str, ground_truth: str) -> float:
-    """Compute a simplified BLEU-1 score with brevity penalty."""
+    """计算带 brevity penalty 的简化 BLEU-1。"""
     prediction_tokens = normalize_answer(prediction).split()
     ground_truth_tokens = normalize_answer(ground_truth).split()
 
@@ -66,7 +66,7 @@ def bleu_1(prediction: str, ground_truth: str) -> float:
 
 
 def summarize_answer_metrics(records: list[dict]) -> dict[str, float | int]:
-    """Summarize final-answer metrics for prediction records."""
+    """汇总 prediction records 的最终答案指标。"""
     total = len(records)
     if total == 0:
         return {
@@ -117,7 +117,7 @@ def summarize_answer_metrics(records: list[dict]) -> dict[str, float | int]:
 
 
 def _normalize_synonyms(text: str) -> str:
-    """Normalize common Medical VQA short-answer synonyms."""
+    """归一化 Medical VQA 常见短答案同义写法。"""
     text = _normalize_laterality(text)
     replacements = {
         "anteroposterior": "ap",
@@ -167,7 +167,7 @@ def _normalize_synonyms(text: str) -> str:
 
 
 def _normalize_laterality(text: str) -> str:
-    """Normalize common left/right side variants."""
+    """归一化常见左右侧表达。"""
     text = re.sub(r"\bleft[-\s]+sided\b", "left", text)
     text = re.sub(r"\bright[-\s]+sided\b", "right", text)
     text = re.sub(r"\bleft\s+side\b", "left", text)

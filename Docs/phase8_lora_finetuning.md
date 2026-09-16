@@ -371,3 +371,60 @@ python scripts/run_phase6_adaptive_routing.py \
 python scripts/run_phase6_adaptive_routing.py \
   --config configs/experiments/exp08_lora_v2_phase6_v8_qwen_7b_48gb_pmc10k_full.yaml
 ```
+
+## Phase6 v9: Oracle-Distilled Learned Router
+
+Oracle routing 的 68.51% 是事后上限，不能直接部署。v9 的目标是把 oracle label
+蒸馏成一个轻量 router，在真实推理时先跑 Direct，再根据 Direct 输出和问题元数据决定是否升级：
+
+```text
+Direct first
+-> extract question / metadata / direct prediction features
+-> learned router
+-> direct / structured_cot / full_multi_agent
+```
+
+训练 router 之前，先确保已经有 oracle analysis：
+
+```bash
+python scripts/analyze_oracle_routing.py \
+  --direct Results/exp08_lora_direct_vlm_qwen_7b_4090d_full/predictions.jsonl \
+  --cot Results/exp02_structured_cot_qwen_7b_4090d_full/predictions.jsonl \
+  --full-agent Results/exp04_supervisor_multi_agent_heuristic_routing_qwen_7b_4090d_pmc10k_full/predictions.jsonl \
+  --routing Results/exp08_lora_phase6_v8_qwen_7b_4090d_pmc10k_full/predictions.jsonl \
+  --output Results/oracle_routing_analysis_exp08_lora_phase6_v8_full
+```
+
+训练 oracle-distilled router：
+
+```bash
+python scripts/train_phase6_oracle_router.py \
+  --oracle-analysis Results/oracle_routing_analysis_exp08_lora_phase6_v8_full/oracle_analysis.csv \
+  --output-model Experiments/phase6_router/exp08_lora_oracle_router.pkl \
+  --output-metrics Experiments/phase6_router/exp08_lora_oracle_router_metrics.json \
+  --validation-ratio 0.2 \
+  --class-weight balanced
+```
+
+先跑 100 条：
+
+```bash
+python scripts/run_phase6_learned_router.py \
+  --config configs/experiments/exp08_lora_phase6_v9_learned_router_qwen_7b_4090d_pmc10k_100.yaml
+```
+
+如果 100 条高于 LoRA Direct 100，再跑 full：
+
+```bash
+python scripts/run_phase6_learned_router.py \
+  --config configs/experiments/exp08_lora_phase6_v9_learned_router_qwen_7b_4090d_pmc10k_full.yaml
+```
+
+注意：
+
+```text
+如果 router 使用 full test 的 oracle_analysis.csv 训练，再在同一个 full test 上评估，
+这个结果属于 oracle-distilled diagnostic，不是严格无泄漏主结果。
+
+严格主结果需要用 development subset 训练 router，再在 held-out test 上评估。
+```
