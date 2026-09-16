@@ -58,6 +58,8 @@ def decide_rule_based_route(
         return decide_rule_based_route_v6(sample)
     if policy == "rule_based_v7":
         return decide_rule_based_route_v7(sample)
+    if policy == "rule_based_v8":
+        return decide_rule_based_route_v8(sample)
     if policy != "rule_based_v1":
         raise ValueError(f"Unsupported Phase 6 routing policy: {policy}")
 
@@ -630,6 +632,66 @@ def decide_rule_based_route_v7(sample: VQARADSample) -> RoutingDecision:
     )
 
 
+def decide_rule_based_route_v8(sample: VQARADSample) -> RoutingDecision:
+    """Phase6 v8 极窄路由规则。
+
+    v7 full 仍低于 LoRA Direct，说明 CoT 触发还偏宽。v8 默认全部走 Direct，
+    只有尺寸、明确比较、侧别、计数和测量类问题进入 Structured CoT，目标是让
+    routing 至少不低于 LoRA Direct。
+    """
+    question_types = _question_type_set(sample)
+    answer_type = sample.answer_type.upper()
+    question = sample.question.lower()
+    markers = _matched_markers(question)
+    strong_markers = _matched_strong_medical_markers(question)
+    v8_cot_markers = _matched_v8_ultra_narrow_cot_markers(question)
+    weak_visual_markers = _matched_visual_description_markers(question)
+
+    if _should_route_v8_to_cot(question_types=question_types, v8_cot_markers=v8_cot_markers):
+        return _decision(
+            route=MEDIUM_ROUTE,
+            complexity="MEDIUM",
+            confidence_signal="MEDIUM",
+            uncertainty_signal="MEDIUM",
+            evidence_support_signal="OPTIONAL",
+            reason="v8 ultra-narrow visual comparison or measurement trigger",
+            sample=sample,
+            matched_markers=markers,
+            strong_markers=strong_markers,
+            weak_visual_markers=weak_visual_markers,
+        )
+
+    if _is_low_complexity(sample) or _is_direct_short_answer_question(
+        answer_type=answer_type,
+        question_types=question_types,
+    ):
+        return _decision(
+            route=LOW_ROUTE,
+            complexity="LOW",
+            confidence_signal="HIGH",
+            uncertainty_signal="LOW",
+            evidence_support_signal="NOT_REQUIRED",
+            reason="v8 LoRA direct-dominant short-answer visual question",
+            sample=sample,
+            matched_markers=markers,
+            strong_markers=strong_markers,
+            weak_visual_markers=weak_visual_markers,
+        )
+
+    return _decision(
+        route=LOW_ROUTE,
+        complexity="LOW",
+        confidence_signal="MEDIUM",
+        uncertainty_signal="LOW",
+        evidence_support_signal="NOT_REQUIRED",
+        reason="v8 default direct route minimizes CoT over-reasoning",
+        sample=sample,
+        matched_markers=markers,
+        strong_markers=strong_markers,
+        weak_visual_markers=weak_visual_markers,
+    )
+
+
 def fallback_route(route: str) -> str | None:
     """返回当前 route 的下一层 fallback，最多升一级。"""
     if route == LOW_ROUTE:
@@ -869,6 +931,37 @@ def _should_route_v7_to_cot(
     if "ATTRIB" in question_types and answer_type == "CLOSED":
         return True
     return bool(v4_cot_markers and question_types & {"SIZE", "ATTRIB"})
+
+
+def _matched_v8_ultra_narrow_cot_markers(question: str) -> list[str]:
+    """匹配 v8 中唯一允许触发 CoT 的极窄视觉比较/测量信号。"""
+    markers = (
+        "which is larger",
+        "which is smaller",
+        "larger than",
+        "smaller than",
+        "greater than",
+        "less than",
+        "which side",
+        "on which side",
+        "left or right",
+        "right or left",
+        "how many",
+        "how large",
+        "measure",
+        "measurement",
+    )
+    return [marker for marker in markers if marker in question]
+
+
+def _should_route_v8_to_cot(
+    question_types: set[str],
+    v8_cot_markers: list[str],
+) -> bool:
+    """v8 只在高置信的视觉比较/测量题上调用 Structured CoT。"""
+    if v8_cot_markers:
+        return True
+    return "SIZE" in question_types
 
 
 def _matched_visual_description_markers(question: str) -> list[str]:

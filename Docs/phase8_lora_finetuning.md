@@ -253,3 +253,37 @@ python scripts/analyze_oracle_routing.py \
   --routing Results/exp08_lora_phase6_v7_qwen_7b_4090d_pmc10k_full/predictions.jsonl \
   --output Results/oracle_routing_analysis_exp08_lora_phase6_v7_full
 ```
+
+## Phase6 v8 极窄路由
+
+v7 full 结果：
+
+```text
+LoRA Direct full: 59.87%
+LoRA Phase6 v7 full: 58.76%
+v7 direct: 362 samples, 58.01%
+v7 structured_cot: 89 samples, 61.80%
+```
+
+v7 仍未超过 Direct，说明 Structured CoT 触发还偏宽。v8 采用更极窄策略：
+
+```text
+默认全部 Direct。
+只保留 SIZE、明确侧别、明确比较、计数、测量类问题进入 Structured CoT。
+不再因为 closed ATTRIB、calcification、hypodense、MRI sequence 进入 CoT。
+不启用 Full Multi-Agent。
+```
+
+运行：
+
+```bash
+python scripts/run_phase6_adaptive_routing.py \
+  --config configs/experiments/exp08_lora_phase6_v8_qwen_7b_4090d_pmc10k_100.yaml
+```
+
+如果 100 条不低于 58%，再跑 full：
+
+```bash
+python scripts/run_phase6_adaptive_routing.py \
+  --config configs/experiments/exp08_lora_phase6_v8_qwen_7b_4090d_pmc10k_full.yaml
+```

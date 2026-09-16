@@ -353,3 +353,57 @@ def test_rule_based_v7_routes_precision_visual_marker_to_cot() -> None:
 
     assert decision.route == MEDIUM_ROUTE
     assert decision.reason == "v7 LoRA narrow visual precision trigger"
+
+
+def test_rule_based_v8_routes_explicit_size_to_cot() -> None:
+    decision = decide_rule_based_route(
+        _sample(
+            question="Is the mass larger than 3 cm?",
+            answer_type="CLOSED",
+            question_type="SIZE",
+        ),
+        policy="rule_based_v8",
+    )
+
+    assert decision.route == MEDIUM_ROUTE
+    assert decision.reason == "v8 ultra-narrow visual comparison or measurement trigger"
+
+
+def test_rule_based_v8_keeps_closed_attribute_direct() -> None:
+    decision = decide_rule_based_route(
+        _sample(
+            question="Is the lesion calcified?",
+            answer_type="CLOSED",
+            question_type="ATTRIB",
+        ),
+        policy="rule_based_v8",
+    )
+
+    assert decision.route == LOW_ROUTE
+    assert "direct" in decision.reason
+
+
+def test_rule_based_v8_routes_side_comparison_to_cot() -> None:
+    decision = decide_rule_based_route(
+        _sample(
+            question="Which side has the larger opacity?",
+            answer_type="OPEN",
+            question_type="PRES",
+        ),
+        policy="rule_based_v8",
+    )
+
+    assert decision.route == MEDIUM_ROUTE
+
+
+def test_rule_based_v8_keeps_diagnostic_marker_direct() -> None:
+    decision = decide_rule_based_route(
+        _sample(
+            question="What diagnosis is most consistent with this finding?",
+            answer_type="OPEN",
+            question_type="OTHER",
+        ),
+        policy="rule_based_v8",
+    )
+
+    assert decision.route == LOW_ROUTE
