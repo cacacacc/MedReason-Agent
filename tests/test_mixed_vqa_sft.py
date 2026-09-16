@@ -164,3 +164,17 @@ def test_phase8_mixed_training_config_parses() -> None:
     assert config["dataset"]["train_file"].endswith("mixed_vqa_sft/train.jsonl")
     assert config["training"]["num_train_epochs"] == 1
     assert config["training"]["learning_rate"] == 0.00003
+
+
+def test_phase8_mixed_v2_training_config_parses() -> None:
+    with open(
+        "configs/training/phase8_qwen_vl_lora_mixed_vqa_v2_48gb.yaml",
+        encoding="utf-8",
+    ) as file:
+        config = yaml.safe_load(file)
+
+    assert config["phase"] == 8
+    assert config["dataset"]["train_file"].endswith("mixed_vqa_sft_v2/train.jsonl")
+    assert config["training"]["num_train_epochs"] == 2
+    assert config["training"]["learning_rate"] == 0.00005
+    assert config["outputs"]["merged_model_dir"].endswith("qwen_vl_lora_mixed_vqa_v2_48gb/merged")
