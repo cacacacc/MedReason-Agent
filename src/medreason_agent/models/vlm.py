@@ -130,6 +130,13 @@ class MockVLMBackend:
                 "Unsupported Assumptions: None.\n"
                 f"Final Answer: {answer}"
             )
+        elif "Extract consistent visual facts from multiple" in request.prompt:
+            raw_output = (
+                "Observation: mock consensus visual observation.\n"
+                'Claim Statuses:\n{"claim": "mock consensus visual observation", '
+                '"status": "OBSERVED"}\n'
+                "Uncertainty: None."
+            )
         elif "Act as a medical image specialist" in request.prompt:
             raw_output = (
                 "Observation: mock visual observation.\n"

@@ -19,6 +19,7 @@ from medreason_agent.prompts.multi_agent import (
     build_critic_prompt,
     build_reasoning_prompt,
     build_supervisor_prompt,
+    build_vision_consensus_prompt,
     build_verifier_prompt,
     build_vision_prompt,
     extract_claims,
@@ -38,6 +39,8 @@ class MultiAgentResult:
     reasoning_output: str
     raw_output: str
     agent_outputs: dict[str, str]
+    vision_observations: list[str]
+    vision_consensus: str
     agent_route: list[str]
     expected_agent_route: list[str]
     selected_tools: list[str]
@@ -58,6 +61,20 @@ class MultiAgentResult:
     confidence: float | None = None
 
 
+@dataclass(frozen=True)
+class VisionStageResult:
+    """Vision stage output, optionally stabilized by multi-pass consensus."""
+
+    output: str
+    observations: list[str]
+    consensus: str
+    claim_statuses: list[dict]
+    tool_calls: list[dict]
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    confidence: float | None = None
+
+
 class FixedMultiAgent:
     """固定链路 baseline：Vision -> Reasoning -> Critic -> Answer。"""
 
@@ -68,9 +85,13 @@ class FixedMultiAgent:
         self,
         backend: VLMBackend,
         memory_store: PersistentAgentMemoryStore | None = None,
+        vision_consistency_enabled: bool = False,
+        vision_observation_count: int = 3,
     ) -> None:
         self.backend = backend
         self.memory_store = memory_store
+        self.vision_consistency_enabled = vision_consistency_enabled
+        self.vision_observation_count = vision_observation_count
 
     def run(
         self,
@@ -82,21 +103,24 @@ class FixedMultiAgent:
         shared_state = SharedAgentState(question=sample.question)
         memory_records = _retrieve_persistent_memory(self.memory_store, sample)
         shared_state.add_persistent_memories(memory_records)
-        vision = self._generate(sample, build_vision_prompt(sample.question), max_new_tokens)
-        vision_claim_statuses = parse_claim_status_lines(
-            vision.raw_output,
-            source_agent="vision_agent",
+        vision_stage = _run_vision_stage(
+            backend=self.backend,
+            sample=sample,
+            max_new_tokens=max_new_tokens,
+            enabled=self.vision_consistency_enabled,
+            observation_count=self.vision_observation_count,
         )
         shared_state.add_agent_output(
             "vision_agent",
-            vision.raw_output,
-            claim_statuses=vision_claim_statuses,
+            vision_stage.output,
+            claim_statuses=vision_stage.claim_statuses,
         )
 
         reasoning = self._generate(
             sample,
             build_reasoning_prompt(
                 sample.question,
+                vision_output=vision_stage.output,
                 shared_state_context=shared_state.compressed_context(),
             ),
             max_new_tokens,
@@ -115,6 +139,7 @@ class FixedMultiAgent:
             sample,
             build_critic_prompt(
                 sample.question,
+                vision_output=vision_stage.output,
                 shared_state_context=shared_state.compressed_context(),
             ),
             max_new_tokens,
@@ -136,6 +161,7 @@ class FixedMultiAgent:
             sample,
             build_answer_prompt(
                 sample.question,
+                vision_output=vision_stage.output,
                 shared_state_context=shared_state.compressed_context(),
             ),
             max_new_tokens,
@@ -176,18 +202,22 @@ class FixedMultiAgent:
             reasoning_output=reasoning.raw_output,
             raw_output=answer.raw_output,
             agent_outputs={
-                "vision": vision.raw_output,
+                "vision": vision_stage.output,
+                "vision_observations": "\n\n".join(vision_stage.observations),
+                "vision_consensus": vision_stage.consensus,
                 "reasoning": reasoning.raw_output,
                 "critic": critic.raw_output,
                 "answer_gate": _format_answer_gate(answer_gate),
                 "answer": answer.raw_output,
             },
+            vision_observations=vision_stage.observations,
+            vision_consensus=vision_stage.consensus,
             agent_route=list(self.expected_agent_route),
             expected_agent_route=list(self.expected_agent_route),
             selected_tools=[],
             expected_selected_tools=[],
             tool_calls=[
-                {"tool": "vlm_generate", "stage": "vision_agent"},
+                *vision_stage.tool_calls,
                 {"tool": "vlm_generate", "stage": "reasoning_agent"},
                 {"tool": "vlm_generate", "stage": "critic_agent"},
                 {"tool": "vlm_generate", "stage": "answer_agent"},
@@ -201,13 +231,13 @@ class FixedMultiAgent:
             memory_records=memory_records,
             memory_write_record=memory_write_record,
             input_tokens=_sum_optional_many(
-                vision.input_tokens,
+                vision_stage.input_tokens,
                 reasoning.input_tokens,
                 critic.input_tokens,
                 answer.input_tokens,
             ),
             output_tokens=_sum_optional_many(
-                vision.output_tokens,
+                vision_stage.output_tokens,
                 reasoning.output_tokens,
                 critic.output_tokens,
                 answer.output_tokens,
@@ -256,6 +286,8 @@ class SupervisorMultiAgent:
         deterministic_answer_gate: bool = False,
         internal_verifier: bool = True,
         question_routing: str = "none",
+        vision_consistency_enabled: bool = False,
+        vision_observation_count: int = 3,
     ) -> None:
         self.backend = backend
         self.retrieval_pipeline = retrieval_pipeline
@@ -264,6 +296,8 @@ class SupervisorMultiAgent:
         self.deterministic_answer_gate = deterministic_answer_gate
         self.internal_verifier = internal_verifier
         self.question_routing = question_routing
+        self.vision_consistency_enabled = vision_consistency_enabled
+        self.vision_observation_count = vision_observation_count
 
     def run(
         self,
@@ -324,20 +358,26 @@ class SupervisorMultiAgent:
 
         vision = None
         vision_output = ""
+        vision_observations: list[str] = []
+        vision_consensus = ""
         if should_run_vision:
-            vision = self._generate(sample, build_vision_prompt(sample.question), max_new_tokens)
-            vision_output = vision.raw_output
-            vision_claim_statuses = parse_claim_status_lines(
-                vision.raw_output,
-                source_agent="vision_agent",
+            vision = _run_vision_stage(
+                backend=self.backend,
+                sample=sample,
+                max_new_tokens=max_new_tokens,
+                enabled=self.vision_consistency_enabled,
+                observation_count=self.vision_observation_count,
             )
+            vision_output = vision.output
+            vision_observations = vision.observations
+            vision_consensus = vision.consensus
             shared_state.add_agent_output(
                 "vision_agent",
-                vision.raw_output,
-                claim_statuses=vision_claim_statuses,
+                vision.output,
+                claim_statuses=vision.claim_statuses,
             )
             agent_route.append("vision_agent")
-            tool_calls.append({"tool": "vlm_generate", "stage": "vision_agent"})
+            tool_calls.extend(vision.tool_calls)
 
         evidence_query = sample.question
         retrieved_evidence: list[dict] = []
@@ -494,11 +534,15 @@ class SupervisorMultiAgent:
             agent_outputs={
                 "supervisor": supervisor.raw_output,
                 "vision": vision_output,
+                "vision_observations": "\n\n".join(vision_observations),
+                "vision_consensus": vision_consensus,
                 "reasoning": reasoning_output,
                 "verifier": verifier_output,
                 "answer_gate": _format_answer_gate(answer_gate),
                 "answer": answer.raw_output,
             },
+            vision_observations=vision_observations,
+            vision_consensus=vision_consensus,
             agent_route=agent_route,
             expected_agent_route=planned_agent_route,
             selected_tools=selected_tools,
@@ -546,10 +590,17 @@ def create_multi_agent(
     deterministic_answer_gate: bool = False,
     internal_verifier: bool = True,
     question_routing: str = "none",
+    vision_consistency_enabled: bool = False,
+    vision_observation_count: int = 3,
 ) -> FixedMultiAgent | SupervisorMultiAgent:
     """根据配置创建 Phase 4 agent。"""
     if mode == FixedMultiAgent.mode:
-        return FixedMultiAgent(backend=backend, memory_store=memory_store)
+        return FixedMultiAgent(
+            backend=backend,
+            memory_store=memory_store,
+            vision_consistency_enabled=vision_consistency_enabled,
+            vision_observation_count=vision_observation_count,
+        )
     if mode == SupervisorMultiAgent.mode:
         return SupervisorMultiAgent(
             backend=backend,
@@ -559,8 +610,142 @@ def create_multi_agent(
             deterministic_answer_gate=deterministic_answer_gate,
             internal_verifier=internal_verifier,
             question_routing=question_routing,
+            vision_consistency_enabled=vision_consistency_enabled,
+            vision_observation_count=vision_observation_count,
         )
     raise ValueError(f"Unsupported multi-agent mode: {mode}")
+
+
+def _run_vision_stage(
+    backend: VLMBackend,
+    sample: VQARADSample,
+    max_new_tokens: int,
+    enabled: bool,
+    observation_count: int,
+) -> VisionStageResult:
+    """Run Vision Agent, optionally using multi-pass consensus for complex samples."""
+    use_consensus = enabled and _is_complex_vision_sample(sample)
+    if not use_consensus:
+        response = backend.generate(
+            VLMRequest(
+                image_path=str(sample.absolute_image_path),
+                question=sample.question,
+                prompt=build_vision_prompt(sample.question),
+                max_new_tokens=max_new_tokens,
+            )
+        )
+        return VisionStageResult(
+            output=response.raw_output,
+            observations=[response.raw_output],
+            consensus="",
+            claim_statuses=parse_claim_status_lines(
+                response.raw_output,
+                source_agent="vision_agent",
+            ),
+            tool_calls=[
+                {
+                    "tool": "vlm_generate",
+                    "stage": "vision_agent",
+                    "vision_consistency": "single_pass",
+                }
+            ],
+            input_tokens=response.input_tokens,
+            output_tokens=response.output_tokens,
+            confidence=response.confidence,
+        )
+
+    passes = max(2, min(int(observation_count), 3))
+    observations: list[str] = []
+    input_tokens: list[int | None] = []
+    output_tokens: list[int | None] = []
+    confidence: float | None = None
+    tool_calls: list[dict] = []
+    for index in range(1, passes + 1):
+        response = backend.generate(
+            VLMRequest(
+                image_path=str(sample.absolute_image_path),
+                question=sample.question,
+                prompt=build_vision_prompt(
+                    sample.question,
+                    pass_index=index,
+                    total_passes=passes,
+                ),
+                max_new_tokens=max_new_tokens,
+            )
+        )
+        observations.append(response.raw_output)
+        input_tokens.append(response.input_tokens)
+        output_tokens.append(response.output_tokens)
+        confidence = response.confidence if confidence is None else confidence
+        tool_calls.append(
+            {
+                "tool": "vlm_generate",
+                "stage": "vision_observation",
+                "pass_index": index,
+                "total_passes": passes,
+                "vision_consistency": "multi_pass",
+            }
+        )
+
+    consensus_response = backend.generate(
+        VLMRequest(
+            image_path=str(sample.absolute_image_path),
+            question=sample.question,
+            prompt=build_vision_consensus_prompt(sample.question, observations),
+            max_new_tokens=max_new_tokens,
+        )
+    )
+    input_tokens.append(consensus_response.input_tokens)
+    output_tokens.append(consensus_response.output_tokens)
+    consensus = consensus_response.raw_output
+    tool_calls.append(
+        {
+            "tool": "vlm_generate",
+            "stage": "vision_consensus",
+            "num_observations": passes,
+            "vision_consistency": "multi_pass",
+        }
+    )
+    return VisionStageResult(
+        output=consensus,
+        observations=observations,
+        consensus=consensus,
+        claim_statuses=parse_claim_status_lines(consensus, source_agent="vision_agent"),
+        tool_calls=tool_calls,
+        input_tokens=_sum_optional_many(*input_tokens),
+        output_tokens=_sum_optional_many(*output_tokens),
+        confidence=consensus_response.confidence or confidence,
+    )
+
+
+def _is_complex_vision_sample(sample: VQARADSample) -> bool:
+    """Identify samples where early visual noise is likely to affect reasoning."""
+    question_type = sample.question_type.upper()
+    answer_type = sample.answer_type.upper()
+    if answer_type == "OPEN":
+        return True
+    if question_type in {"ABN", "OTHER", "SIZE", "ATTRIB", "POS"}:
+        return True
+    question = sample.question.lower()
+    complex_markers = (
+        "abnormal",
+        "abnormality",
+        "lesion",
+        "mass",
+        "opacity",
+        "consolidation",
+        "aneurysm",
+        "fracture",
+        "edema",
+        "infarct",
+        "which side",
+        "left or right",
+        "larger",
+        "smaller",
+        "increased",
+        "decreased",
+    )
+    return any(marker in question for marker in complex_markers)
 
 
 def _sum_optional_many(*values: int | None) -> int | None:

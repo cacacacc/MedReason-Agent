@@ -57,8 +57,9 @@ def load_metrics(path: Path) -> dict[str, Any]:
 
 
 def build_markdown(records: list[dict[str, Any]]) -> str:
+    normalized_records = [_normalize_record(record) for record in records]
     sorted_records = sorted(
-        records,
+        normalized_records,
         key=lambda item: (_number(item.get("accuracy")), _number(item.get("mean_token_f1"))),
         reverse=True,
     )
@@ -69,12 +70,25 @@ def build_markdown(records: list[dict[str, Any]]) -> str:
         lines.append("| " + " | ".join(_format_value(record.get(field)) for field in FIELDS) + " |")
 
     best = sorted_records[0] if sorted_records else {}
+    best_accuracy = _number(best.get("accuracy")) if best else 0.0
+    best_records = [
+        record
+        for record in sorted_records
+        if abs(_number(record.get("accuracy")) - best_accuracy) < 1e-12
+    ]
     lines.extend(["", "## Current Best", ""])
-    if best:
+    if len(best_records) > 1:
+        tied = ", ".join(
+            f"`{record.get('experiment_id')}` "
+            f"({record.get('orchestrator')} + {record.get('retriever')})"
+            for record in best_records
+        )
+        lines.append(f"- Best by accuracy is tied at {_format_value(best_accuracy)}: {tied}.")
+    elif best:
         lines.append(
             "- Best by accuracy: "
             f"`{best.get('experiment_id')}` "
-            f"({best.get('orchestrator', 'python')} + {best.get('retriever')})."
+            f"({best.get('orchestrator')} + {best.get('retriever')})."
         )
     else:
         lines.append("- No metrics were provided.")
@@ -89,6 +103,14 @@ def build_markdown(records: list[dict[str, Any]]) -> str:
         "with the same orchestrator."
     )
     return "\n".join(lines)
+
+
+def _normalize_record(record: dict[str, Any]) -> dict[str, Any]:
+    """Fill defaults for older metrics emitted before ablation fields existed."""
+    normalized = dict(record)
+    if not normalized.get("orchestrator"):
+        normalized["orchestrator"] = "python"
+    return normalized
 
 
 def _number(value: Any) -> float:

@@ -40,6 +40,22 @@ def _sample_with_id(sample_id: str) -> VQARADSample:
     )
 
 
+def _complex_sample() -> VQARADSample:
+    sample = _sample()
+    return VQARADSample(
+        dataset=sample.dataset,
+        sample_id=sample.sample_id,
+        image_id=sample.image_id,
+        image_path=sample.image_path,
+        question="What abnormality is seen in the right lung?",
+        answer="opacity",
+        answer_type="OPEN",
+        question_type="ABN",
+        image_organ="CHEST",
+        split=sample.split,
+    )
+
+
 def _retrieval_pipeline() -> RetrievalPipeline:
     chunks = chunk_document(
         KnowledgeDocument(
@@ -140,6 +156,22 @@ def test_supervisor_multi_agent_runs_retrieval_and_verifier_route() -> None:
     assert result.shared_state["retrieved_evidence"]
     assert "Claim Statuses:" in result.shared_state["compressed_context"]
     assert result.answer_gate["decision"] == "DISABLED"
+
+
+def test_supervisor_vision_consistency_uses_consensus_for_complex_sample() -> None:
+    result = SupervisorMultiAgent(
+        backend=MockVLMBackend(),
+        retrieval_pipeline=_retrieval_pipeline(),
+        vision_consistency_enabled=True,
+        vision_observation_count=3,
+    ).run(_complex_sample(), max_new_tokens=64)
+
+    assert len(result.vision_observations) == 3
+    assert "mock consensus visual observation" in result.vision_consensus
+    assert result.agent_outputs["vision"] == result.vision_consensus
+    assert result.tool_calls[1]["stage"] == "vision_observation"
+    assert result.tool_calls[3]["stage"] == "vision_observation"
+    assert result.tool_calls[4]["stage"] == "vision_consensus"
 
 
 def test_supervisor_selected_tools_control_actual_route() -> None:

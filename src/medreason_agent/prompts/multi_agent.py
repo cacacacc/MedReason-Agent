@@ -23,6 +23,47 @@ Uncertainty: state visual uncertainty if the image is insufficient.
 Do not provide a final diagnosis. Do not provide clinical advice."""
 
 
+VISION_AGENT_CONSISTENCY_V1 = """Act as a medical image specialist.
+
+Question: {question}
+
+This is visual observation pass {pass_index} of {total_passes}. Produce an
+independent, short observation. Focus only on visible image evidence needed for
+the question.
+
+Use exactly this format:
+
+Observation: write one or two short visual facts. Avoid diagnosis and avoid
+speculation.
+Claim Statuses: write JSON objects, one per line. Use OBSERVED only for visible
+image findings.
+Uncertainty: state visual uncertainty if the image is insufficient.
+
+Do not provide a final diagnosis. Do not provide clinical advice."""
+
+
+VISION_CONSENSUS_AGENT_V1 = """Extract consistent visual facts from multiple
+Vision Agent observations.
+
+Question: {question}
+
+Vision Observations:
+{observations_block}
+
+Use exactly this format:
+
+Observation: write two or three short visual facts that are consistent across the
+observations. If the observations disagree, keep only the stable visible facts
+and mention uncertainty.
+Claim Statuses: write JSON objects, one per line. Use OBSERVED only for stable
+visible image findings.
+Uncertainty: briefly state disagreements or missing visual evidence, or write
+None.
+
+Do not add new visual findings. Do not provide a final diagnosis. Do not provide
+clinical advice."""
+
+
 REASONING_AGENT_V1 = """Act as a clinical reasoning expert.
 
 Question: {question}
@@ -173,9 +214,31 @@ _VERIFICATION_STATUS_PATTERN = re.compile(
 )
 
 
-def build_vision_prompt(question: str) -> str:
+def build_vision_prompt(
+    question: str,
+    pass_index: int | None = None,
+    total_passes: int | None = None,
+) -> str:
     """构造 Vision Agent prompt。"""
+    if pass_index is not None and total_passes is not None:
+        return VISION_AGENT_CONSISTENCY_V1.format(
+            question=question,
+            pass_index=pass_index,
+            total_passes=total_passes,
+        )
     return VISION_AGENT_V1.format(question=question)
+
+
+def build_vision_consensus_prompt(question: str, observations: list[str]) -> str:
+    """Build a prompt that extracts stable visual facts from short observations."""
+    observations_block = "\n\n".join(
+        f"Observation Pass {index}:\n{observation}"
+        for index, observation in enumerate(observations, start=1)
+    )
+    return VISION_CONSENSUS_AGENT_V1.format(
+        question=question,
+        observations_block=observations_block or "None",
+    )
 
 
 def build_reasoning_prompt(

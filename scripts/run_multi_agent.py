@@ -123,6 +123,7 @@ def build_prediction_record(
         "rag_mode": metadata.get("rag_mode", ""),
         "agent_mode": metadata["agent_mode"],
         "question_routing": metadata.get("question_routing", "none"),
+        "vision_consistency_enabled": metadata.get("vision_consistency_enabled", False),
         "dataset": sample.dataset,
         "split": sample.split,
         "sample_id": sample.sample_id,
@@ -137,6 +138,8 @@ def build_prediction_record(
         "reasoning_output": result.reasoning_output,
         "raw_output": result.raw_output,
         "agent_outputs": result.agent_outputs,
+        "vision_observations": result.vision_observations,
+        "vision_consensus": result.vision_consensus,
         "shared_state": result.shared_state,
         "state_compression": result.shared_state.get("state_compression", {}),
         "memory_records": result.memory_records or [],
@@ -186,7 +189,16 @@ def is_current_record(record: dict[str, Any], method: dict[str, Any]) -> bool:
             "question_routing",
             "none",
         )
+        and record.get("vision_consistency_enabled", False)
+        == bool(method.get("vision_consistency_enabled", False))
         and "agent_outputs" in record
+        and (
+            not bool(method.get("vision_consistency_enabled", False))
+            or (
+                "vision_observations" in record
+                and "vision_consensus" in record
+            )
+        )
         and "selected_tools" in record
         and "expected_selected_tools" in record
         and "expected_agent_route" in record
@@ -226,6 +238,8 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
         dynamic_routing=bool(method.get("dynamic_routing", False)),
         deterministic_answer_gate=bool(method.get("deterministic_answer_gate", False)),
         question_routing=str(method.get("question_routing", "none")),
+        vision_consistency_enabled=bool(method.get("vision_consistency_enabled", False)),
+        vision_observation_count=int(method.get("vision_observation_count", 3)),
     )
     samples = load_vqa_rad_split(
         split=dataset_config["split"],
@@ -269,6 +283,9 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
                 "rag_mode": method.get("rag_mode", ""),
                 "agent_mode": method["agent_mode"],
                 "question_routing": method.get("question_routing", "none"),
+                "vision_consistency_enabled": bool(
+                    method.get("vision_consistency_enabled", False)
+                ),
                 "latency_ms": latency_ms,
             },
         )
@@ -293,6 +310,10 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
             "prompt_contract": method["prompt_contract"],
             "agent_mode": method["agent_mode"],
             "question_routing": method.get("question_routing", "none"),
+            "vision_consistency_enabled": bool(
+                method.get("vision_consistency_enabled", False)
+            ),
+            "vision_observation_count": int(method.get("vision_observation_count", 3)),
             "rag_mode": method.get("rag_mode", ""),
             "retriever": retrieval_config.get("retriever"),
             "top_k": retrieval_config.get("top_k"),

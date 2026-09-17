@@ -1,5 +1,7 @@
 from medreason_agent.prompts.multi_agent import (
     build_supervisor_prompt,
+    build_vision_consensus_prompt,
+    build_vision_prompt,
     extract_claims,
     extract_critic_decision,
     extract_final_answer,
@@ -24,6 +26,19 @@ def test_reasoning_prompt_contains_claim_status_contract() -> None:
 
     assert "Claim Statuses:" in prompt
     assert "Do not treat HYPOTHESIS as fact" in prompt
+
+
+def test_vision_consistency_prompts_use_short_observation_contract() -> None:
+    prompt = build_vision_prompt("Is there opacity?", pass_index=2, total_passes=3)
+    consensus_prompt = build_vision_consensus_prompt(
+        "Is there opacity?",
+        ["Observation: opacity.", "Observation: right lung opacity."],
+    )
+
+    assert "visual observation pass 2 of 3" in prompt
+    assert "one or two short visual facts" in prompt
+    assert "Extract consistent visual facts" in consensus_prompt
+    assert "Do not add new visual findings" in consensus_prompt
 
 
 def test_extract_multi_agent_outputs() -> None:
