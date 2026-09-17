@@ -2,6 +2,27 @@
 
 > A Supervisor-Guided Multi-Agent Framework for Reliable Multimodal Medical Reasoning
 
+## Current Project Summary
+
+MedReason-Agent studies reliable multimodal medical VQA with Qwen2.5-VL on
+VQA-RAD. The project compares direct answering, CoT, RAG, multi-agent reasoning,
+verification, adaptive routing, and LoRA adaptation under a controlled experiment
+pipeline.
+
+The current research conclusion is:
+
+```text
+Adding more reasoning modules does not automatically improve medical VQA.
+The strongest frozen-backbone result comes from adaptive reasoning control:
+mostly direct answering, with structured CoT used only for selected questions.
+```
+
+Start here for the updated project narrative:
+
+- [Project Overview](Docs/project_overview.md)
+- [Research Questions](Docs/research_questions.md)
+- [LangGraph and Qdrant Ablation](Docs/langgraph_qdrant_ablation.md)
+
 MedReason-Agent 是一个科研型 AI 项目，研究对象是医学多模态视觉问答中的推理可靠性。它不是真实临床诊断产品，而是用 benchmark 实验测试：显式推理、RAG、多 Agent 协作、Supervisor 路由和 Verification 是否能提升 frozen VLM 的可靠性。
 
 ## 研究重点

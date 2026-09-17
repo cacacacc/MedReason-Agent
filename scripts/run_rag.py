@@ -24,6 +24,7 @@ from medreason_agent.agents.rag_agents import (
     RetrievalSettings,
     create_rag_agent,
 )
+from medreason_agent.agents.langgraph_rag import create_langgraph_rag_agent
 from medreason_agent.data.vqa_rad import VQARADSample, load_vqa_rad_split
 from medreason_agent.evaluation.answer_metrics import exact_match, summarize_answer_metrics
 from medreason_agent.evaluation.claim_status import summarize_claim_statuses
@@ -44,6 +45,7 @@ from medreason_agent.models.vlm import create_vlm_backend
 from medreason_agent.paths import resolve_project_path
 from medreason_agent.retrieval.faiss_retriever import FAISSRetriever
 from medreason_agent.retrieval.keyword import KeywordRetriever, load_chunks
+from medreason_agent.retrieval.qdrant_retriever import QdrantRetriever
 from medreason_agent.retrieval.rerank import KeywordReranker
 
 
@@ -77,6 +79,7 @@ def build_prediction_record(
         "backend": metadata["backend"],
         "prompt_version": metadata["prompt_version"],
         "prompt_contract": metadata["prompt_contract"],
+        "orchestrator": metadata["orchestrator"],
         "rag_mode": metadata["rag_mode"],
         "dataset": sample.dataset,
         "split": sample.split,
@@ -149,6 +152,7 @@ def is_current_rag_record(
         record.get("prompt_version") != method["prompt_version"]
         or record.get("prompt_contract") != method["prompt_contract"]
         or record.get("rag_mode") != method["rag_mode"]
+        or record.get("orchestrator", "python") != method.get("orchestrator", "python")
         or record.get("agent_route") != expected_route
     ):
         return False
@@ -203,6 +207,19 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
             ),
             device=retrieval_config.get("embedding_device"),
         )
+    elif retriever_name == "qdrant":
+        retriever = QdrantRetriever(
+            collection_name=str(retrieval_config["collection_name"]),
+            embedding_model=str(
+                retrieval_config.get("embedding_model", "BAAI/bge-small-en-v1.5")
+            ),
+            device=retrieval_config.get("embedding_device"),
+            path=resolve_project_path(retrieval_config["qdrant_path"])
+            if retrieval_config.get("qdrant_path")
+            else None,
+            url=retrieval_config.get("qdrant_url"),
+            api_key=retrieval_config.get("qdrant_api_key"),
+        )
     else:
         raise ValueError(f"Unsupported retriever: {retriever_name}")
     reranker = KeywordReranker()
@@ -234,11 +251,21 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
         reranker=reranker,
         settings=retrieval_settings,
     )
-    rag_agent = create_rag_agent(
-        rag_mode=method["rag_mode"],
-        backend=backend,
-        retrieval_pipeline=retrieval_pipeline,
-    )
+    orchestrator = str(method.get("orchestrator", "python"))
+    if orchestrator == "python":
+        rag_agent = create_rag_agent(
+            rag_mode=method["rag_mode"],
+            backend=backend,
+            retrieval_pipeline=retrieval_pipeline,
+        )
+    elif orchestrator == "langgraph":
+        rag_agent = create_langgraph_rag_agent(
+            rag_mode=method["rag_mode"],
+            backend=backend,
+            retrieval_pipeline=retrieval_pipeline,
+        )
+    else:
+        raise ValueError(f"Unsupported orchestrator: {orchestrator}")
 
     result_dir = resolve_project_path(output_config["result_dir"])
     prediction_path = result_dir / output_config["prediction_file"]
@@ -277,6 +304,7 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
                 "backend": backend.backend_name,
                 "prompt_version": method["prompt_version"],
                 "prompt_contract": method["prompt_contract"],
+                "orchestrator": orchestrator,
                 "rag_mode": method["rag_mode"],
                 "latency_ms": latency_ms,
             },
@@ -300,12 +328,16 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
             "scale": dataset_config["scale"],
             "prompt_version": method["prompt_version"],
             "prompt_contract": method["prompt_contract"],
+            "orchestrator": orchestrator,
             "rag_mode": method["rag_mode"],
             "retriever": retriever_name,
             "reranker": retrieval_config.get("reranker", "keyword_reranker"),
             "embedding_model": retrieval_config.get("embedding_model"),
             "index_path": retrieval_config.get("index_path"),
             "metadata_path": retrieval_config.get("metadata_path"),
+            "qdrant_path": retrieval_config.get("qdrant_path"),
+            "qdrant_url": retrieval_config.get("qdrant_url"),
+            "collection_name": retrieval_config.get("collection_name"),
             "top_k": top_k,
             "candidate_top_k": candidate_top_k,
             "min_rerank_score": min_rerank_score,
