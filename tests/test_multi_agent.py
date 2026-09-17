@@ -110,6 +110,23 @@ class UnsupportedVerifierBackend(MockVLMBackend):
         return super().generate(request)
 
 
+class NoObservedConsensusBackend(MockVLMBackend):
+    def generate(self, request: VLMRequest) -> VLMResponse:
+        if "Extract consistent visual facts from multiple" in request.prompt:
+            raw_output = (
+                "Observation: uncertain possible opacity.\n"
+                'Claim Statuses:\n{"claim": "possible opacity", "status": "HYPOTHESIS"}\n'
+                "Uncertainty: observations disagree."
+            )
+            return VLMResponse(
+                answer=raw_output,
+                raw_output=raw_output,
+                input_tokens=len(request.prompt.split()),
+                output_tokens=len(raw_output.split()),
+            )
+        return super().generate(request)
+
+
 def test_fixed_multi_agent_runs_fixed_route() -> None:
     result = FixedMultiAgent(MockVLMBackend()).run(_sample(), max_new_tokens=64)
 
@@ -166,12 +183,28 @@ def test_supervisor_vision_consistency_uses_consensus_for_complex_sample() -> No
         vision_observation_count=3,
     ).run(_complex_sample(), max_new_tokens=64)
 
-    assert len(result.vision_observations) == 3
+    assert len(result.vision_observations) == 4
     assert "mock consensus visual observation" in result.vision_consensus
     assert result.agent_outputs["vision"] == result.vision_consensus
-    assert result.tool_calls[1]["stage"] == "vision_observation"
-    assert result.tool_calls[3]["stage"] == "vision_observation"
-    assert result.tool_calls[4]["stage"] == "vision_consensus"
+    assert result.tool_calls[1]["stage"] == "vision_agent"
+    assert result.tool_calls[2]["stage"] == "vision_observation"
+    assert result.tool_calls[4]["stage"] == "vision_observation"
+    assert result.tool_calls[5]["stage"] == "vision_consensus"
+    assert result.tool_calls[5]["consensus_used"] is True
+
+
+def test_vision_consistency_falls_back_without_observed_consensus() -> None:
+    result = SupervisorMultiAgent(
+        backend=NoObservedConsensusBackend(),
+        retrieval_pipeline=_retrieval_pipeline(),
+        vision_consistency_enabled=True,
+        vision_observation_count=3,
+    ).run(_complex_sample(), max_new_tokens=64)
+
+    assert "mock visual observation" in result.agent_outputs["vision"]
+    assert "possible opacity" in result.vision_consensus
+    assert result.tool_calls[5]["consensus_used"] is False
+    assert result.tool_calls[5]["fallback_to_single_pass"] is True
 
 
 def test_supervisor_selected_tools_control_actual_route() -> None:

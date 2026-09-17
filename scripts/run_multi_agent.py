@@ -179,6 +179,28 @@ def write_jsonl(path: Path, records: list[dict[str, Any]]) -> None:
             file.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
+def summarize_vision_consistency(records: list[dict[str, Any]]) -> dict[str, Any]:
+    """Summarize soft vision-consistency usage from tool-call traces."""
+    consensus_calls = [
+        call
+        for record in records
+        for call in record.get("tool_calls", [])
+        if call.get("stage") == "vision_consensus"
+    ]
+    used_count = sum(1 for call in consensus_calls if call.get("consensus_used") is True)
+    fallback_count = sum(
+        1 for call in consensus_calls if call.get("fallback_to_single_pass") is True
+    )
+    total = len(consensus_calls)
+    return {
+        "vision_consensus_count": total,
+        "vision_consensus_used_count": used_count,
+        "vision_consensus_fallback_count": fallback_count,
+        "vision_consensus_used_rate": round(used_count / total, 6) if total else 0.0,
+        "vision_consensus_fallback_rate": round(fallback_count / total, 6) if total else 0.0,
+    }
+
+
 def is_current_record(record: dict[str, Any], method: dict[str, Any]) -> bool:
     """判断已有记录是否符合当前 Phase 4 配置。"""
     return (
@@ -298,6 +320,7 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
     metrics.update(summarize_evidence_quality(records))
     metrics.update(summarize_claim_statuses(records))
     metrics.update(summarize_agent_metrics(records))
+    metrics.update(summarize_vision_consistency(records))
     metrics.update(summarize_error_attribution(records))
     metrics.update(
         {

@@ -65,6 +65,51 @@ vision_observation
 vision_consensus
 ```
 
+## v1 Result
+
+The first version directly replaced the single Vision Agent output with the
+consensus output for complex samples. A 100-sample tuning run showed a negative
+result:
+
+```text
+Vision consistency v1 accuracy: 30%
+Previous Supervisor 100-sample baseline: about 35%
+Hallucination indicator increased to 75%
+OBSERVED claim count: 0
+```
+
+Interpretation:
+
+```text
+Blindly replacing the original vision output with consensus can inject more
+format drift and visual uncertainty into the Reasoning Agent.
+```
+
+## v2: Soft-Gated Consensus
+
+The second version keeps the original single-pass Vision Agent as a fallback.
+For complex samples, it runs additional short observation passes and a consensus
+extraction step. The consensus replaces the original vision output only when the
+consensus contains at least one `OBSERVED` claim. Otherwise, downstream agents
+receive the original single-pass Vision output.
+
+```text
+if consensus has OBSERVED visual facts:
+    pass consensus to Reasoner
+else:
+    fallback to original single-pass Vision output
+```
+
+Metrics now include:
+
+```text
+vision_consensus_count
+vision_consensus_used_count
+vision_consensus_fallback_count
+vision_consensus_used_rate
+vision_consensus_fallback_rate
+```
+
 ## Controlled Ablation
 
 Baseline:
@@ -74,11 +119,18 @@ python scripts/run_multi_agent.py \
   --config configs/experiments/exp04_supervisor_multi_agent_qwen_7b_4090d_pmc10k_100.yaml
 ```
 
-Vision consistency:
+Vision consistency v1:
 
 ```bash
 python scripts/run_multi_agent.py \
   --config configs/experiments/exp04_supervisor_multi_agent_vision_consistency_qwen_7b_4090d_pmc10k_100.yaml
+```
+
+Soft-gated vision consistency v2:
+
+```bash
+python scripts/run_multi_agent.py \
+  --config configs/experiments/exp04_supervisor_multi_agent_vision_consistency_v2_qwen_7b_4090d_pmc10k_100.yaml
 ```
 
 Compare:

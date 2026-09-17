@@ -624,42 +624,43 @@ def _run_vision_stage(
     observation_count: int,
 ) -> VisionStageResult:
     """Run Vision Agent, optionally using multi-pass consensus for complex samples."""
+    single_response = backend.generate(
+        VLMRequest(
+            image_path=str(sample.absolute_image_path),
+            question=sample.question,
+            prompt=build_vision_prompt(sample.question),
+            max_new_tokens=max_new_tokens,
+        )
+    )
+    single_claim_statuses = parse_claim_status_lines(
+        single_response.raw_output,
+        source_agent="vision_agent",
+    )
+    single_tool_call = {
+        "tool": "vlm_generate",
+        "stage": "vision_agent",
+        "vision_consistency": "single_pass",
+    }
     use_consensus = enabled and _is_complex_vision_sample(sample)
     if not use_consensus:
-        response = backend.generate(
-            VLMRequest(
-                image_path=str(sample.absolute_image_path),
-                question=sample.question,
-                prompt=build_vision_prompt(sample.question),
-                max_new_tokens=max_new_tokens,
-            )
-        )
         return VisionStageResult(
-            output=response.raw_output,
-            observations=[response.raw_output],
+            output=single_response.raw_output,
+            observations=[single_response.raw_output],
             consensus="",
-            claim_statuses=parse_claim_status_lines(
-                response.raw_output,
-                source_agent="vision_agent",
-            ),
-            tool_calls=[
-                {
-                    "tool": "vlm_generate",
-                    "stage": "vision_agent",
-                    "vision_consistency": "single_pass",
-                }
-            ],
-            input_tokens=response.input_tokens,
-            output_tokens=response.output_tokens,
-            confidence=response.confidence,
+            claim_statuses=single_claim_statuses,
+            tool_calls=[single_tool_call],
+            input_tokens=single_response.input_tokens,
+            output_tokens=single_response.output_tokens,
+            confidence=single_response.confidence,
         )
 
     passes = max(2, min(int(observation_count), 3))
-    observations: list[str] = []
-    input_tokens: list[int | None] = []
-    output_tokens: list[int | None] = []
-    confidence: float | None = None
-    tool_calls: list[dict] = []
+    observations: list[str] = [single_response.raw_output]
+    consistency_observations: list[str] = []
+    input_tokens: list[int | None] = [single_response.input_tokens]
+    output_tokens: list[int | None] = [single_response.output_tokens]
+    confidence: float | None = single_response.confidence
+    tool_calls: list[dict] = [single_tool_call]
     for index in range(1, passes + 1):
         response = backend.generate(
             VLMRequest(
@@ -674,6 +675,7 @@ def _run_vision_stage(
             )
         )
         observations.append(response.raw_output)
+        consistency_observations.append(response.raw_output)
         input_tokens.append(response.input_tokens)
         output_tokens.append(response.output_tokens)
         confidence = response.confidence if confidence is None else confidence
@@ -691,26 +693,35 @@ def _run_vision_stage(
         VLMRequest(
             image_path=str(sample.absolute_image_path),
             question=sample.question,
-            prompt=build_vision_consensus_prompt(sample.question, observations),
+            prompt=build_vision_consensus_prompt(sample.question, consistency_observations),
             max_new_tokens=max_new_tokens,
         )
     )
     input_tokens.append(consensus_response.input_tokens)
     output_tokens.append(consensus_response.output_tokens)
     consensus = consensus_response.raw_output
+    consensus_claim_statuses = parse_claim_status_lines(
+        consensus,
+        source_agent="vision_agent",
+    )
+    use_consensus_output = _has_observed_claim(consensus_claim_statuses)
+    output = consensus if use_consensus_output else single_response.raw_output
+    claim_statuses = consensus_claim_statuses if use_consensus_output else single_claim_statuses
     tool_calls.append(
         {
             "tool": "vlm_generate",
             "stage": "vision_consensus",
             "num_observations": passes,
             "vision_consistency": "multi_pass",
+            "consensus_used": use_consensus_output,
+            "fallback_to_single_pass": not use_consensus_output,
         }
     )
     return VisionStageResult(
-        output=consensus,
+        output=output,
         observations=observations,
         consensus=consensus,
-        claim_statuses=parse_claim_status_lines(consensus, source_agent="vision_agent"),
+        claim_statuses=claim_statuses,
         tool_calls=tool_calls,
         input_tokens=_sum_optional_many(*input_tokens),
         output_tokens=_sum_optional_many(*output_tokens),
@@ -746,6 +757,15 @@ def _is_complex_vision_sample(sample: VQARADSample) -> bool:
         "decreased",
     )
     return any(marker in question for marker in complex_markers)
+
+
+def _has_observed_claim(claim_statuses: list[dict]) -> bool:
+    """Return whether a vision output contains at least one OBSERVED claim."""
+    return any(
+        normalize_claim_status(str(item.get("status", ""))) == "OBSERVED"
+        and str(item.get("claim", "")).strip()
+        for item in claim_statuses
+    )
 
 
 def _sum_optional_many(*values: int | None) -> int | None:
