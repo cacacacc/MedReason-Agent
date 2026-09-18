@@ -1,6 +1,7 @@
 from medreason_agent.agents.memory import PersistentAgentMemoryStore, PersistentMemorySettings
 from medreason_agent.agents.multi_agent import FixedMultiAgent, SupervisorMultiAgent
 from medreason_agent.agents.rag_agents import RetrievalPipeline, RetrievalSettings
+from medreason_agent.agents.true_multi_agent import AgentRuntimeMultiAgent
 from medreason_agent.data.vqa_rad import VQARADSample
 from medreason_agent.evaluation.agent_metrics import summarize_agent_metrics
 from medreason_agent.models.vlm import MockVLMBackend, VLMRequest, VLMResponse
@@ -173,6 +174,51 @@ def test_supervisor_multi_agent_runs_retrieval_and_verifier_route() -> None:
     assert result.shared_state["retrieved_evidence"]
     assert "Claim Statuses:" in result.shared_state["compressed_context"]
     assert result.answer_gate["decision"] == "DISABLED"
+
+
+def test_agent_runtime_multi_agent_runs_contract_based_route() -> None:
+    result = AgentRuntimeMultiAgent(
+        backend=MockVLMBackend(),
+        retrieval_pipeline=_retrieval_pipeline(),
+    ).run(_sample(), max_new_tokens=64)
+
+    assert result.prediction == "yes"
+    assert result.agent_route == [
+        "supervisor_agent",
+        "vision_agent",
+        "retrieval_agent",
+        "reasoning_agent",
+        "verifier_agent",
+        "answer_agent",
+    ]
+    assert result.expected_agent_route == result.agent_route
+    assert result.selected_tools == result.expected_selected_tools
+    assert result.agent_outputs["supervisor"]
+    assert result.agent_outputs["vision"]
+    assert result.agent_outputs["reasoning"]
+    assert result.agent_outputs["verifier"]
+    assert result.retrieved_evidence
+    assert result.claim_verification_status == "SUPPORTED"
+    assert result.shared_state["messages"][0]["agent_name"] == "supervisor_agent"
+    assert "retrieval_agent" in {
+        item.get("evidence_stage") for item in result.shared_state["retrieved_evidence"]
+    }
+
+
+def test_agent_runtime_dynamic_routing_uses_supervisor_plan() -> None:
+    result = AgentRuntimeMultiAgent(
+        backend=AnswerOnlySupervisorBackend(),
+        retrieval_pipeline=_retrieval_pipeline(),
+        dynamic_routing=True,
+    ).run(_sample(), max_new_tokens=64)
+
+    assert result.selected_tools == ["Answer Agent"]
+    assert result.agent_route == ["supervisor_agent", "answer_agent"]
+    assert result.expected_agent_route == ["supervisor_agent", "answer_agent"]
+    assert result.agent_outputs["vision"] == ""
+    assert result.agent_outputs["reasoning"] == ""
+    assert result.agent_outputs["verifier"] == ""
+    assert result.retrieved_evidence == []
 
 
 def test_supervisor_vision_consistency_uses_consensus_for_complex_sample() -> None:

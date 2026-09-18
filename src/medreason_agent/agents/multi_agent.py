@@ -613,6 +613,20 @@ def create_multi_agent(
             vision_consistency_enabled=vision_consistency_enabled,
             vision_observation_count=vision_observation_count,
         )
+    if mode == "agent_runtime_multi_agent":
+        from medreason_agent.agents.true_multi_agent import AgentRuntimeMultiAgent
+
+        return AgentRuntimeMultiAgent(
+            backend=backend,
+            retrieval_pipeline=retrieval_pipeline,
+            memory_store=memory_store,
+            dynamic_routing=dynamic_routing,
+            deterministic_answer_gate=deterministic_answer_gate,
+            internal_verifier=internal_verifier,
+            question_routing=question_routing,
+            vision_consistency_enabled=vision_consistency_enabled,
+            vision_observation_count=vision_observation_count,
+        )
     raise ValueError(f"Unsupported multi-agent mode: {mode}")
 
 
