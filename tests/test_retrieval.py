@@ -4,7 +4,13 @@ from medreason_agent.retrieval.chunking import (
     chunk_document_by_tokens,
 )
 from medreason_agent.retrieval.keyword import KeywordRetriever
-from medreason_agent.retrieval.rerank import KeywordReranker, filter_evidence
+from medreason_agent.retrieval.keyword import RetrievedEvidence
+from medreason_agent.retrieval.rerank import (
+    KeywordReranker,
+    MedicalHeuristicReranker,
+    create_reranker,
+    filter_evidence,
+)
 
 
 def test_chunk_document_creates_overlapping_chunks() -> None:
@@ -108,3 +114,33 @@ def test_filter_evidence_keeps_only_high_quality_top_k() -> None:
 
     assert filter_evidence(reranked, top_k=1, min_score=0.1)
     assert filter_evidence(reranked, top_k=1, min_score=999.0) == []
+
+
+def test_medical_heuristic_reranker_prefers_finding_and_anatomy_match() -> None:
+    evidence = [
+        RetrievedEvidence(
+            chunk_id="generic",
+            doc_id="generic",
+            title="General opacity",
+            text="Opacity can be seen on many imaging studies.",
+            score=10.0,
+            source="unit",
+        ),
+        RetrievedEvidence(
+            chunk_id="lung",
+            doc_id="lung",
+            title="Right lung opacity",
+            text="Right lung opacity may represent consolidation.",
+            score=1.0,
+            source="unit",
+        ),
+    ]
+
+    reranked = MedicalHeuristicReranker().rerank("Is there right lung opacity?", evidence)
+
+    assert reranked[0].chunk_id == "lung"
+
+
+def test_create_reranker_returns_configured_reranker() -> None:
+    assert isinstance(create_reranker("keyword_reranker"), KeywordReranker)
+    assert isinstance(create_reranker("medical_heuristic_reranker"), MedicalHeuristicReranker)

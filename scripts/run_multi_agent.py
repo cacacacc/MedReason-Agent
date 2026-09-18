@@ -38,7 +38,7 @@ from medreason_agent.models.vlm import create_vlm_backend
 from medreason_agent.paths import resolve_project_path
 from medreason_agent.retrieval.faiss_retriever import FAISSRetriever
 from medreason_agent.retrieval.keyword import KeywordRetriever, load_chunks
-from medreason_agent.retrieval.rerank import KeywordReranker
+from medreason_agent.retrieval.rerank import create_reranker
 
 
 def load_config(path: Path) -> dict[str, Any]:
@@ -71,7 +71,7 @@ def create_retrieval_pipeline(retrieval_config: dict[str, Any]) -> RetrievalPipe
 
     return RetrievalPipeline(
         retriever=retriever,
-        reranker=KeywordReranker(),
+        reranker=create_reranker(str(retrieval_config.get("reranker", "keyword_reranker"))),
         settings=RetrievalSettings(
             candidate_top_k=int(retrieval_config.get("candidate_top_k", 10)),
             top_k=int(retrieval_config.get("top_k", 5)),

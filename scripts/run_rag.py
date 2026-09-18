@@ -46,7 +46,7 @@ from medreason_agent.paths import resolve_project_path
 from medreason_agent.retrieval.faiss_retriever import FAISSRetriever
 from medreason_agent.retrieval.keyword import KeywordRetriever, load_chunks
 from medreason_agent.retrieval.qdrant_retriever import QdrantRetriever
-from medreason_agent.retrieval.rerank import KeywordReranker
+from medreason_agent.retrieval.rerank import create_reranker
 
 
 def load_config(path: Path) -> dict[str, Any]:
@@ -222,7 +222,9 @@ def run(config_path: Path, backend_name: str | None = None) -> dict[str, Any]:
         )
     else:
         raise ValueError(f"Unsupported retriever: {retriever_name}")
-    reranker = KeywordReranker()
+    reranker = create_reranker(
+        str(retrieval_config.get("reranker", "keyword_reranker"))
+    )
     backend = create_vlm_backend(
         backend=backend_name or method.get("backend", "mock"),
         model_id=method.get("model_id"),
